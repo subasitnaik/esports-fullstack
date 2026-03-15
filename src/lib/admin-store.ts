@@ -1,0 +1,673 @@
+/**
+ * In-memory admin store for demo.
+ * Replace with Supabase calls for production.
+ */
+
+import bcrypt from "bcryptjs";
+
+export type Game = { id: string; name: string; imageUrl: string | null };
+export type GameMode = { id: string; gameId: string; name: string; imageUrl: string | null };
+export type MatchType = "solo" | "duo" | "squad";
+
+export type RankReward = { fromRank: number; toRank: number; coins: number };
+
+export type PrizePool = {
+  coinsPerKill: number;
+  totalPrizePool?: number; // Total prize pool for the whole match (displayed with coins per kill)
+  rankRewards: RankReward[];
+};
+
+export type Match = {
+  id: string;
+  gameModeId: string;
+  title: string;
+  entryFee: number;
+  roomCode: string | null;
+  roomPassword: string | null;
+  status: "upcoming" | "ongoing" | "ended" | "cancelled";
+  maxParticipants: number;
+  scheduledAt: string;
+  registrationLocked: boolean;
+  matchType: MatchType;
+  prizePool: PrizePool;
+};
+
+export type TeamMember = { inGameName: string; inGameUid: string; kills?: number };
+export type MatchParticipant = {
+  id: string;
+  matchId: string;
+  userId: string;
+  teamMembers: TeamMember[];
+  joinedAt: string;
+  rank?: number; // Set when player dies; used for live leaderboard order
+};
+export type User = { id: string; email: string; displayName: string; coins: number; isBlocked?: boolean };
+
+export type CoinTransaction = {
+  id: string;
+  userId: string;
+  amount: number;
+  type: "admin_add" | "match_entry" | "refund" | "deposit" | "deposit_failed" | "withdraw" | "withdraw_failed" | "signup_bonus";
+  referenceId?: string;
+  description?: string;
+  createdAt: string;
+};
+
+export type DepositRequest = {
+  id: string;
+  userId: string;
+  amount: number;
+  utr: string;
+  status: "pending" | "accepted" | "rejected";
+  createdAt: string;
+};
+
+export type WithdrawalRequest = {
+  id: string;
+  userId: string;
+  amount: number;
+  upiId: string;
+  status: "pending" | "accepted" | "rejected";
+  rejectNote?: string;
+  chargePercent?: number; // charge % at time of request (0 = no charge)
+  createdAt: string;
+};
+
+export type AdminPermission = {
+  id: string;
+  adminname: string;
+  passwordHash: string;
+  isMasterAdmin: boolean;
+  usersAccess: boolean;
+  coinsAccess: boolean;
+  gamesAccessType: "all" | "specific";
+  allowedGameIds: string[];
+  createdAt: string;
+};
+
+let gameIdCounter = 4;
+let modeIdCounter = 6;
+let matchIdCounter = 3;
+
+const games: Game[] = [
+  { id: "1", name: "Valorant", imageUrl: null },
+  { id: "2", name: "PUBG Mobile", imageUrl: null },
+  { id: "3", name: "Free Fire", imageUrl: null },
+];
+
+const gameModes: GameMode[] = [
+  { id: "m1", gameId: "1", name: "Ranked", imageUrl: null },
+  { id: "m2", gameId: "1", name: "Unrated", imageUrl: null },
+  { id: "m3", gameId: "2", name: "Classic", imageUrl: null },
+  { id: "m4", gameId: "2", name: "Arena", imageUrl: null },
+  { id: "m5", gameId: "3", name: "Ranked", imageUrl: null },
+];
+
+const defaultPrizePool: PrizePool = {
+  coinsPerKill: 5,
+  totalPrizePool: 0,
+  rankRewards: [{ fromRank: 1, toRank: 5, coins: 30 }, { fromRank: 6, toRank: 10, coins: 20 }],
+};
+
+const matches: Match[] = [
+  {
+    id: "match1",
+    gameModeId: "m1",
+    title: "Weekend Cup #1",
+    entryFee: 50,
+    roomCode: null,
+    roomPassword: null,
+    status: "upcoming",
+    maxParticipants: 16,
+    scheduledAt: "2025-03-15T18:00:00",
+    registrationLocked: false,
+    matchType: "squad",
+    prizePool: defaultPrizePool,
+  },
+  {
+    id: "match2",
+    gameModeId: "m1",
+    title: "Pro Scrim",
+    entryFee: 100,
+    roomCode: "ROOM123",
+    roomPassword: "pass123",
+    status: "ongoing",
+    maxParticipants: 8,
+    scheduledAt: "2025-03-14T14:00:00",
+    registrationLocked: true,
+    matchType: "duo",
+    prizePool: defaultPrizePool,
+  },
+];
+
+const matchParticipants: MatchParticipant[] = [
+  { id: "mp1", matchId: "match2", userId: "10001", teamMembers: [{ inGameName: "ProPlayer1", inGameUid: "123456", kills: 0 }], joinedAt: "2025-03-14T13:00:00" },
+  { id: "mp2", matchId: "match2", userId: "10002", teamMembers: [{ inGameName: "GamerX", inGameUid: "789012", kills: 0 }, { inGameName: "GamerY", inGameUid: "789013", kills: 0 }], joinedAt: "2025-03-14T13:05:00" },
+  { id: "mp3", matchId: "match2", userId: "10001", teamMembers: [{ inGameName: "Sniper99", inGameUid: "111222", kills: 0 }], joinedAt: "2025-03-14T13:10:00" },
+  { id: "mp4", matchId: "match2", userId: "10002", teamMembers: [{ inGameName: "RushB", inGameUid: "333444", kills: 0 }], joinedAt: "2025-03-14T13:15:00" },
+  { id: "mp5", matchId: "match2", userId: "10001", teamMembers: [{ inGameName: "AceKing", inGameUid: "555666", kills: 0 }], joinedAt: "2025-03-14T13:20:00" },
+];
+let matchParticipantIdCounter = 6;
+
+// Display order for ongoing matches: when admin sets rank, we swap positions
+const matchParticipantOrder: Record<string, string[]> = {};
+
+function generateUniqueUserId(): string {
+  const existing = new Set(users.map((u) => u.id));
+  let id: string;
+  do {
+    id = String(Math.floor(10000 + Math.random() * 90000));
+  } while (existing.has(id));
+  return id;
+}
+
+const users: User[] = [
+  { id: "10001", email: "demo@example.com", displayName: "Demo", coins: 500, isBlocked: false },
+  { id: "10002", email: "player@test.com", displayName: "Player", coins: 250, isBlocked: false },
+  { id: "10003", email: "test@example.com", displayName: "Test", coins: 500, isBlocked: false },
+];
+
+const coinTransactions: CoinTransaction[] = [];
+let transactionIdCounter = 1;
+
+const depositRequests: DepositRequest[] = [];
+let depositRequestIdCounter = 1;
+
+const withdrawalRequests: WithdrawalRequest[] = [];
+let withdrawalRequestIdCounter = 1;
+
+// Seed fake deposit and withdrawal requests for testing
+if (depositRequests.length === 0) {
+  depositRequests.push(
+    { id: "dr-fake1", userId: "10001", amount: 200, utr: "UTR123456789", status: "pending", createdAt: "2025-03-14T10:00:00" },
+    { id: "dr-fake2", userId: "10002", amount: 100, utr: "UTR987654321", status: "pending", createdAt: "2025-03-14T09:30:00" },
+  );
+}
+if (withdrawalRequests.length === 0) {
+  withdrawalRequests.push(
+    { id: "wr-fake1", userId: "10001", amount: 150, upiId: "user@paytm", status: "pending", createdAt: "2025-03-14T11:00:00" },
+    { id: "wr-fake2", userId: "10002", amount: 80, upiId: "player@gpay", status: "pending", createdAt: "2025-03-14T09:00:00" },
+  );
+}
+
+let depositQrUrl: string | null = null;
+
+// Persist admin data across Next.js hot reloads in development
+const globalForAdmin = globalThis as unknown as {
+  adminPermissions?: AdminPermission[];
+  adminIdCounter?: number;
+  withdrawalChargePercent?: number;
+  signupBonus?: number;
+};
+
+const initialAdminPermissions: AdminPermission[] = [
+  {
+    id: "admin-master",
+    adminname: "masteradmin",
+    passwordHash: bcrypt.hashSync("master123", 10),
+    isMasterAdmin: true,
+    usersAccess: true,
+    coinsAccess: true,
+    gamesAccessType: "all",
+    allowedGameIds: [],
+    createdAt: new Date().toISOString(),
+  },
+];
+
+const adminPermissions =
+  globalForAdmin.adminPermissions ?? (globalForAdmin.adminPermissions = [...initialAdminPermissions]);
+let adminIdCounter = globalForAdmin.adminIdCounter ?? 1;
+let withdrawalChargePercent = globalForAdmin.withdrawalChargePercent ?? 0;
+let signupBonus = globalForAdmin.signupBonus ?? 0;
+
+function getGamesForAdmin(admin: AdminPermission): Game[] {
+  if (admin.isMasterAdmin || admin.gamesAccessType === "all") return [...games];
+  return games.filter((g) => admin.allowedGameIds.includes(g.id));
+}
+
+export const adminStore = {
+  games: (adminId?: string) => {
+    if (!adminId) return [...games];
+    const admin = adminPermissions.find((a) => a.id === adminId);
+    if (!admin) return [...games];
+    return getGamesForAdmin(admin);
+  },
+  addGame: (name: string, imageUrl: string | null) => {
+    const id = String(gameIdCounter++);
+    games.push({ id, name, imageUrl });
+    return games[games.length - 1];
+  },
+  deleteGame: (id: string) => {
+    const i = games.findIndex((g) => g.id === id);
+    if (i === -1) return false;
+    games.splice(i, 1);
+    return true;
+  },
+  renameGame: (id: string, name: string) => {
+    const g = games.find((x) => x.id === id);
+    if (!g) return null;
+    g.name = name;
+    return g;
+  },
+
+  gameModes: (gameId?: string) =>
+    gameId ? gameModes.filter((m) => m.gameId === gameId) : [...gameModes],
+  addGameMode: (gameId: string, name: string, imageUrl: string | null) => {
+    const id = `m${modeIdCounter++}`;
+    gameModes.push({ id, gameId, name, imageUrl });
+    return gameModes[gameModes.length - 1];
+  },
+  deleteMode: (id: string) => {
+    const i = gameModes.findIndex((m) => m.id === id);
+    if (i === -1) return false;
+    gameModes.splice(i, 1);
+    return true;
+  },
+  renameMode: (id: string, name: string) => {
+    const m = gameModes.find((x) => x.id === id);
+    if (!m) return null;
+    m.name = name;
+    return m;
+  },
+
+  matches: (modeId?: string) =>
+    modeId ? matches.filter((m) => m.gameModeId === modeId) : [...matches],
+  addMatch: (
+    gameModeId: string,
+    title: string,
+    entryFee: number,
+    maxParticipants: number,
+    scheduledAt: string,
+    matchType: MatchType = "solo",
+    prizePool: PrizePool = defaultPrizePool
+  ) => {
+    const id = `match${matchIdCounter++}`;
+    matches.push({
+      id,
+      gameModeId,
+      title,
+      entryFee,
+      roomCode: null,
+      roomPassword: null,
+      status: "upcoming",
+      maxParticipants,
+      scheduledAt,
+      registrationLocked: false,
+      matchType,
+      prizePool,
+    });
+    return matches[matches.length - 1];
+  },
+  updateMatchRoomInfo: (matchId: string, roomCode: string, roomPassword: string) => {
+    const m = matches.find((x) => x.id === matchId);
+    if (!m || m.status !== "upcoming") return null;
+    m.roomCode = roomCode;
+    m.roomPassword = roomPassword;
+    return m;
+  },
+  startMatch: (matchId: string, roomCode?: string, roomPassword?: string) => {
+    const m = matches.find((x) => x.id === matchId);
+    if (!m || m.status !== "upcoming") return null;
+    m.roomCode = roomCode ?? m.roomCode;
+    m.roomPassword = roomPassword ?? m.roomPassword;
+    if (!m.roomCode || !m.roomPassword) return null;
+    m.status = "ongoing";
+    m.registrationLocked = true;
+    return m;
+  },
+  cancelMatch: (matchId: string) => {
+    const m = matches.find((x) => x.id === matchId);
+    if (!m || m.status !== "upcoming") return null;
+    m.status = "cancelled";
+    const participants = matchParticipants.filter((p) => p.matchId === matchId);
+    for (const p of participants) {
+      const u = users.find((x) => x.id === p.userId);
+      if (u) {
+        u.coins += m.entryFee;
+        coinTransactions.push({
+          id: `tx-${transactionIdCounter++}`,
+          userId: p.userId,
+          amount: m.entryFee,
+          type: "refund",
+          referenceId: matchId,
+          description: `Refund: ${m.title} cancelled`,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+    return m;
+  },
+  deleteMatch: (id: string) => {
+    const i = matches.findIndex((m) => m.id === id);
+    if (i === -1) return false;
+    matches.splice(i, 1);
+    return true;
+  },
+  renameMatch: (id: string, title: string) => {
+    const m = matches.find((x) => x.id === id);
+    if (!m) return null;
+    m.title = title;
+    return m;
+  },
+
+  users: () => [...users],
+  getSignupBonus: () => signupBonus,
+  setSignupBonus: (amount: number) => {
+    const a = Math.max(0, amount);
+    signupBonus = a;
+    globalForAdmin.signupBonus = a;
+    return a;
+  },
+  addUser: (email: string, displayName: string) => {
+    const existing = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+    if (existing) return null;
+    const id = generateUniqueUserId();
+    const bonus = signupBonus;
+    const user: User = {
+      id,
+      email,
+      displayName,
+      coins: bonus,
+      isBlocked: false,
+    };
+    users.push(user);
+    if (bonus > 0) {
+      coinTransactions.push({
+        id: `tx-${transactionIdCounter++}`,
+        userId: id,
+        amount: bonus,
+        type: "signup_bonus",
+        description: "Signup bonus",
+        createdAt: new Date().toISOString(),
+      });
+    }
+    return user;
+  },
+  getUserByEmail: (email: string) =>
+    users.find((u) => u.email?.toLowerCase() === email.toLowerCase()) ?? null,
+  addCoins: (userId: string, amount: number, description?: string) => {
+    const u = users.find((x) => x.id === userId);
+    if (!u) return null;
+    u.coins += amount;
+    coinTransactions.push({
+      id: `tx-${transactionIdCounter++}`,
+      userId,
+      amount,
+      type: "admin_add",
+      description: description ?? "Admin added coins",
+      createdAt: new Date().toISOString(),
+    });
+    return u;
+  },
+  addDepositRequest: (userId: string, amount: number, utr: string) => {
+    const id = `dr-${depositRequestIdCounter++}`;
+    const req: DepositRequest = {
+      id,
+      userId,
+      amount,
+      utr,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    depositRequests.push(req);
+    return req;
+  },
+  getDepositRequests: (status?: "pending" | "accepted" | "rejected") => {
+    if (status) return depositRequests.filter((r) => r.status === status);
+    return [...depositRequests];
+  },
+  getDepositRequest: (id: string) => depositRequests.find((r) => r.id === id),
+  acceptDepositRequest: (id: string) => {
+    const req = depositRequests.find((r) => r.id === id);
+    if (!req || req.status !== "pending") return null;
+    req.status = "accepted";
+    const u = users.find((x) => x.id === req.userId);
+    if (u) {
+      u.coins += req.amount;
+      coinTransactions.push({
+        id: `tx-${transactionIdCounter++}`,
+        userId: req.userId,
+        amount: req.amount,
+        type: "deposit",
+        description: "Deposited",
+        referenceId: req.utr,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    return req;
+  },
+  rejectDepositRequest: (id: string) => {
+    const req = depositRequests.find((r) => r.id === id);
+    if (!req || req.status !== "pending") return null;
+    req.status = "rejected";
+    coinTransactions.push({
+      id: `tx-${transactionIdCounter++}`,
+      userId: req.userId,
+      amount: req.amount,
+      type: "deposit_failed",
+      description: "Deposit rejected",
+      referenceId: req.utr,
+      createdAt: new Date().toISOString(),
+    });
+    return req;
+  },
+  blockDepositRequest: (id: string) => {
+    const req = depositRequests.find((r) => r.id === id);
+    if (!req || req.status !== "pending") return null;
+    req.status = "rejected";
+    const u = users.find((x) => x.id === req.userId);
+    if (u) u.isBlocked = true;
+    coinTransactions.push({
+      id: `tx-${transactionIdCounter++}`,
+      userId: req.userId,
+      amount: req.amount,
+      type: "deposit_failed",
+      description: "Deposit rejected (user blocked)",
+      referenceId: req.utr,
+      createdAt: new Date().toISOString(),
+    });
+    return req;
+  },
+  getWithdrawalCharge: () => withdrawalChargePercent,
+  setWithdrawalCharge: (percent: number) => {
+    const p = Math.max(0, Math.min(100, percent));
+    withdrawalChargePercent = p;
+    globalForAdmin.withdrawalChargePercent = p;
+    return p;
+  },
+  addWithdrawalRequest: (userId: string, amount: number, upiId: string) => {
+    const u = users.find((x) => x.id === userId);
+    if (!u || u.coins < amount) return null;
+    const id = `wr-${withdrawalRequestIdCounter++}`;
+    const req: WithdrawalRequest = {
+      id,
+      userId,
+      amount,
+      upiId,
+      status: "pending",
+      chargePercent: withdrawalChargePercent,
+      createdAt: new Date().toISOString(),
+    };
+    withdrawalRequests.push(req);
+    return req;
+  },
+  getWithdrawalRequests: (status?: "pending" | "accepted" | "rejected") => {
+    if (status) return withdrawalRequests.filter((r) => r.status === status);
+    return [...withdrawalRequests];
+  },
+  getWithdrawalRequestsByUser: (userId: string) =>
+    withdrawalRequests.filter((r) => r.userId === userId),
+  getWithdrawalRequest: (id: string) => withdrawalRequests.find((r) => r.id === id),
+  acceptWithdrawalRequest: (id: string) => {
+    const req = withdrawalRequests.find((r) => r.id === id);
+    if (!req || req.status !== "pending") return null;
+    const u = users.find((x) => x.id === req.userId);
+    if (!u || u.coins < req.amount) return null;
+    req.status = "accepted";
+    u.coins -= req.amount;
+    coinTransactions.push({
+      id: `tx-${transactionIdCounter++}`,
+      userId: req.userId,
+      amount: req.amount,
+      type: "withdraw",
+      description: "Withdraw",
+      referenceId: req.upiId,
+      createdAt: new Date().toISOString(),
+    });
+    return req;
+  },
+  rejectWithdrawalRequest: (id: string, note: string) => {
+    const req = withdrawalRequests.find((r) => r.id === id);
+    if (!req || req.status !== "pending") return null;
+    req.status = "rejected";
+    req.rejectNote = note;
+    coinTransactions.push({
+      id: `tx-${transactionIdCounter++}`,
+      userId: req.userId,
+      amount: req.amount,
+      type: "withdraw_failed",
+      description: note || "Withdrawal rejected",
+      referenceId: req.upiId,
+      createdAt: new Date().toISOString(),
+    });
+    return req;
+  },
+  transactions: (userId?: string) => {
+    const list = userId
+      ? coinTransactions.filter((t) => t.userId === userId)
+      : [...coinTransactions];
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+  blockUser: (userId: string) => {
+    const u = users.find((x) => x.id === userId);
+    if (!u) return false;
+    u.isBlocked = true;
+    return true;
+  },
+  unblockUser: (userId: string) => {
+    const u = users.find((x) => x.id === userId);
+    if (!u) return false;
+    u.isBlocked = false;
+    return true;
+  },
+  deleteUser: (userId: string) => {
+    const i = users.findIndex((x) => x.id === userId);
+    if (i === -1) return false;
+    users.splice(i, 1);
+    return true;
+  },
+
+  getGame: (id: string) => games.find((g) => g.id === id),
+  getMode: (id: string) => gameModes.find((m) => m.id === id),
+  getMatch: (id: string) => matches.find((m) => m.id === id),
+  getUser: (id: string) => users.find((u) => u.id === id),
+  getParticipantsForMatch: (matchId: string) => {
+    const list = matchParticipants.filter((p) => p.matchId === matchId);
+    const order = matchParticipantOrder[matchId];
+    if (order && order.length === list.length) {
+      const byId = new Map(list.map((p) => [p.id, p]));
+      return order.map((id) => byId.get(id)).filter(Boolean) as MatchParticipant[];
+    }
+    return list.sort((a, b) => new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime());
+  },
+  updateParticipantKills: (matchId: string, participantId: string, kills: number[]) => {
+    const p = matchParticipants.find((x) => x.matchId === matchId && x.id === participantId);
+    if (!p) return null;
+    p.teamMembers.forEach((tm, i) => {
+      tm.kills = kills[i] ?? tm.kills ?? 0;
+    });
+    return p;
+  },
+  updateParticipantRank: (matchId: string, participantId: string, rank: number) => {
+    const list = matchParticipants.filter((p) => p.matchId === matchId);
+    const p = list.find((x) => x.id === participantId);
+    if (!p || rank < 1 || rank > list.length) return null;
+    let order = matchParticipantOrder[matchId];
+    if (!order || order.length !== list.length) {
+      order = list.sort((a, b) => new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime()).map((x) => x.id);
+      matchParticipantOrder[matchId] = order;
+    }
+    const idx = order.indexOf(participantId);
+    if (idx === -1) return null;
+    const rankIdx = rank - 1;
+    p.rank = rank;
+    [order[idx], order[rankIdx]] = [order[rankIdx], order[idx]];
+    return p;
+  },
+  addMatchParticipant: (matchId: string, userId: string, teamMembers: { inGameName: string; inGameUid: string }[]) => {
+    const id = `mp${matchParticipantIdCounter++}`;
+    const p: MatchParticipant = {
+      id,
+      matchId,
+      userId,
+      teamMembers: teamMembers.map((tm) => ({ ...tm, kills: 0 })),
+      joinedAt: new Date().toISOString(),
+    };
+    matchParticipants.push(p);
+    return p;
+  },
+
+  getDepositQrUrl: () => depositQrUrl,
+  setDepositQrUrl: (url: string | null) => {
+    depositQrUrl = url;
+    return depositQrUrl;
+  },
+
+  // Admin auth & permissions
+  login: async (adminname: string, password: string): Promise<AdminPermission | null> => {
+    const admin = adminPermissions.find((a) => a.adminname.toLowerCase() === adminname.toLowerCase());
+    if (!admin) return null;
+    const ok = await bcrypt.compare(password, admin.passwordHash);
+    return ok ? admin : null;
+  },
+  getAdminById: (id: string) => adminPermissions.find((a) => a.id === id) ?? null,
+  getAllAdmins: () => adminPermissions.map((a) => ({ ...a, passwordHash: "[hidden]" })),
+  createAdmin: (
+    adminname: string,
+    password: string,
+    opts: {
+      usersAccess: boolean;
+      coinsAccess: boolean;
+      gamesAccessType: "all" | "specific";
+      allowedGameIds: string[];
+    }
+  ): AdminPermission | null => {
+    if (adminPermissions.some((a) => a.adminname.toLowerCase() === adminname.toLowerCase())) return null;
+    const id = `admin-${adminIdCounter++}`;
+    globalForAdmin.adminIdCounter = adminIdCounter;
+    const admin: AdminPermission = {
+      id,
+      adminname,
+      passwordHash: bcrypt.hashSync(password, 10),
+      isMasterAdmin: false,
+      usersAccess: opts.usersAccess,
+      coinsAccess: opts.coinsAccess,
+      gamesAccessType: opts.gamesAccessType,
+      allowedGameIds: opts.allowedGameIds ?? [],
+      createdAt: new Date().toISOString(),
+    };
+    adminPermissions.push(admin);
+    return admin;
+  },
+  deleteAdmin: (adminId: string): boolean => {
+    const admin = adminPermissions.find((a) => a.id === adminId);
+    if (!admin || admin.isMasterAdmin) return false;
+    const i = adminPermissions.findIndex((a) => a.id === adminId);
+    if (i === -1) return false;
+    adminPermissions.splice(i, 1);
+    return true;
+  },
+  updateAdminPassword: (adminId: string, newPassword: string): boolean => {
+    const admin = adminPermissions.find((a) => a.id === adminId);
+    if (!admin) return false;
+    admin.passwordHash = bcrypt.hashSync(newPassword, 10);
+    return true;
+  },
+  canAccessGames: (adminId: string) => {
+    const admin = adminStore.getAdminById(adminId);
+    return admin ? (admin.isMasterAdmin || admin.gamesAccessType === "all" || admin.allowedGameIds.length > 0) : false;
+  },
+  canAccessUsers: (adminId: string) => adminStore.getAdminById(adminId)?.usersAccess ?? false,
+  canAccessCoins: (adminId: string) => adminStore.getAdminById(adminId)?.coinsAccess ?? false,
+  isMasterAdmin: (adminId: string) => adminStore.getAdminById(adminId)?.isMasterAdmin ?? false,
+};
