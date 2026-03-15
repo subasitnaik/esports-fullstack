@@ -17,14 +17,24 @@ export async function GET(
     const isWithdraw = t.type === "withdraw" || t.type === "withdraw_failed";
     let status: "pending" | "successful" | "failed" | undefined;
     let note = t.description ?? t.type;
-    if (t.type === "withdraw") {
+    if (t.type === "deposit") {
+      status = "successful";
+      note = "Deposit successful";
+    } else if (t.type === "withdraw") {
       status = "successful";
       note = "Withdraw";
     } else if (t.type === "withdraw_failed") {
       status = "failed";
       note = t.description ?? "Withdrawal rejected";
     } else if (t.type === "deposit_failed") {
+      status = "failed";
       note = t.description ?? "Deposit rejected";
+    } else if (t.type === "admin_add") {
+      note = t.description ?? "Admin added";
+    } else if (t.type === "signup_bonus") {
+      note = "Signup bonus";
+    } else if (t.type === "refund") {
+      note = t.description ?? "Refund";
     }
     return {
       id: t.id,
