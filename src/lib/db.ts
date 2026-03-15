@@ -41,6 +41,62 @@ export type DbAdmin = {
   createdAt: string;
 };
 
+export type DbMatch = {
+  id: string;
+  gameModeId: string;
+  title: string;
+  entryFee: number;
+  roomCode: string | null;
+  roomPassword: string | null;
+  status: string;
+  maxParticipants: number;
+  scheduledAt: string;
+  registrationLocked: boolean;
+  matchType: string;
+  prizePool: { coinsPerKill: number; totalPrizePool?: number; rankRewards: { fromRank: number; toRank: number; coins: number }[] };
+};
+
+function toMatch(row: {
+  id: string;
+  game_mode_id: string;
+  title: string;
+  entry_fee: number;
+  room_code?: string | null;
+  room_password?: string | null;
+  status: string;
+  max_participants: number;
+  starts_at?: string | null;
+  registration_locked?: boolean;
+  match_type?: string;
+  coins_per_kill?: number;
+  total_prize_pool?: number;
+  rank_rewards?: unknown;
+}): DbMatch {
+  const rewards = Array.isArray(row.rank_rewards)
+    ? (row.rank_rewards as { fromRank?: number; toRank?: number; coins?: number }[])
+        .filter((r) => r && typeof r.fromRank === "number" && typeof r.toRank === "number" && typeof r.coins === "number")
+        .map((r) => ({ fromRank: r.fromRank!, toRank: r.toRank!, coins: r.coins! }))
+    : [];
+  return {
+    id: row.id,
+    gameModeId: row.game_mode_id,
+    title: row.title,
+    entryFee: row.entry_fee ?? 0,
+    roomCode: row.room_code ?? null,
+    roomPassword: row.room_password ?? null,
+    status: row.status ?? "upcoming",
+    maxParticipants: row.max_participants ?? 100,
+    scheduledAt: row.starts_at ?? "",
+    registrationLocked: row.registration_locked ?? false,
+    matchType: row.match_type ?? "solo",
+    prizePool: {
+      coinsPerKill: row.coins_per_kill ?? 5,
+      totalPrizePool: row.total_prize_pool ?? 0,
+      rankRewards: rewards,
+    },
+  };
+}
+
 function toUser(row: { id: string; email: string; display_name: string; coins: number; is_blocked?: boolean }): DbUser {
   return {
     id: row.id,
@@ -405,6 +461,207 @@ export const db = {
     if (!supabase) return null;
     await supabase.from("app_settings").upsert({ key: "deposit_qr_url", value: url ?? "", updated_at: new Date().toISOString() }, { onConflict: "key" });
     return url;
+  },
+
+  async games(adminId?: string): Promise<{ id: string; name: string; imageUrl: string | null }[]> {
+    const supabase = getSupabase();
+    if (!supabase) return [];
+    let q = supabase.from("games").select("id, name, image_url").order("display_order").order("created_at");
+    const { data } = await q;
+    let list = (data ?? []).map((r) => ({ id: r.id, name: r.name, imageUrl: r.image_url ?? null }));
+    if (adminId) {
+      const admin = await db.getAdminById(adminId);
+      if (admin && admin.gamesAccessType === "specific" && !admin.isMasterAdmin && admin.allowedGameIds.length > 0) {
+        list = list.filter((g) => admin.allowedGameIds.includes(g.id));
+      }
+    }
+    return list;
+  },
+
+  async gameModes(gameId?: string): Promise<{ id: string; gameId: string; name: string; imageUrl: string | null }[]> {
+    const supabase = getSupabase();
+    if (!supabase) return [];
+    let q = supabase.from("game_modes").select("id, game_id, name, image_url").order("display_order").order("created_at");
+    if (gameId) q = q.eq("game_id", gameId);
+    const { data } = await q;
+    return (data ?? []).map((r) => ({ id: r.id, gameId: r.game_id, name: r.name, imageUrl: r.image_url ?? null }));
+  },
+
+  async getMode(id: string): Promise<{ id: string; gameId: string; name: string; imageUrl: string | null } | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data } = await supabase.from("game_modes").select("id, game_id, name, image_url").eq("id", id).single();
+    return data ? { id: data.id, gameId: data.game_id, name: data.name, imageUrl: data.image_url ?? null } : null;
+  },
+
+  async addGame(name: string, imageUrl: string | null): Promise<{ id: string; name: string; imageUrl: string | null } | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data, error } = await supabase.from("games").insert({ name, image_url: imageUrl }).select("id, name, image_url").single();
+    if (error || !data) return null;
+    return { id: data.id, name: data.name, imageUrl: data.image_url ?? null };
+  },
+
+  async deleteGame(id: string): Promise<boolean> {
+    const supabase = getSupabase();
+    if (!supabase) return false;
+    const { error } = await supabase.from("games").delete().eq("id", id);
+    return !error;
+  },
+
+  async renameGame(id: string, name: string): Promise<{ id: string; name: string; imageUrl: string | null } | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data, error } = await supabase.from("games").update({ name, updated_at: new Date().toISOString() }).eq("id", id).select("id, name, image_url").single();
+    if (error || !data) return null;
+    return { id: data.id, name: data.name, imageUrl: data.image_url ?? null };
+  },
+
+  async addGameMode(gameId: string, name: string, imageUrl: string | null): Promise<{ id: string; gameId: string; name: string; imageUrl: string | null } | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data, error } = await supabase.from("game_modes").insert({ game_id: gameId, name, image_url: imageUrl }).select("id, game_id, name, image_url").single();
+    if (error || !data) return null;
+    return { id: data.id, gameId: data.game_id, name: data.name, imageUrl: data.image_url ?? null };
+  },
+
+  async deleteGameMode(id: string): Promise<boolean> {
+    const supabase = getSupabase();
+    if (!supabase) return false;
+    const { error } = await supabase.from("game_modes").delete().eq("id", id);
+    return !error;
+  },
+
+  async renameGameMode(id: string, name: string): Promise<{ id: string; gameId: string; name: string; imageUrl: string | null } | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data, error } = await supabase.from("game_modes").update({ name, updated_at: new Date().toISOString() }).eq("id", id).select("id, game_id, name, image_url").single();
+    if (error || !data) return null;
+    return { id: data.id, gameId: data.game_id, name: data.name, imageUrl: data.image_url ?? null };
+  },
+
+  async matches(modeId?: string): Promise<DbMatch[]> {
+    const supabase = getSupabase();
+    if (!supabase) return [];
+    let q = supabase.from("matches").select("*").order("starts_at", { ascending: true, nullsFirst: false });
+    if (modeId) q = q.eq("game_mode_id", modeId);
+    const { data } = await q;
+    return (data ?? []).map(toMatch);
+  },
+
+  async addMatch(
+    gameModeId: string,
+    title: string,
+    entryFee: number,
+    maxParticipants: number,
+    scheduledAt: string,
+    matchType: string,
+    prizePool: { coinsPerKill: number; totalPrizePool?: number; rankRewards: { fromRank: number; toRank: number; coins: number }[] }
+  ): Promise<DbMatch | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from("matches")
+      .insert({
+        game_mode_id: gameModeId,
+        title,
+        entry_fee: entryFee,
+        max_participants: maxParticipants,
+        starts_at: scheduledAt || null,
+        match_type: matchType || "solo",
+        coins_per_kill: prizePool?.coinsPerKill ?? 5,
+        total_prize_pool: prizePool?.totalPrizePool ?? 0,
+        rank_rewards: prizePool?.rankRewards ?? [],
+      })
+      .select()
+      .single();
+    if (error || !data) return null;
+    return toMatch(data);
+  },
+
+  async getMatch(id: string): Promise<(DbMatch & { participants?: { id: string; matchId: string; userId: string; teamMembers: { inGameName: string; inGameUid: string; kills?: number }[]; joinedAt: string; rank?: number }[] }) | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data: matchRow, error } = await supabase.from("matches").select("*").eq("id", id).single();
+    if (error || !matchRow) return null;
+    const { data: parts } = await supabase
+      .from("match_participants")
+      .select("id, match_id, user_id, in_game_name, in_game_uid, kills, squad_rank, joined_at")
+      .eq("match_id", id)
+      .order("joined_at");
+    const participants = (parts ?? []).map((p) => ({
+      id: p.id,
+      matchId: p.match_id,
+      userId: p.user_id,
+      teamMembers: [{ inGameName: p.in_game_name, inGameUid: p.in_game_uid, kills: p.kills ?? 0 }],
+      joinedAt: p.joined_at,
+      rank: p.squad_rank ?? undefined,
+    }));
+    return { ...toMatch(matchRow), participants };
+  },
+
+  async updateMatchRoomInfo(id: string, roomCode: string, roomPassword: string): Promise<DbMatch | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from("matches")
+      .update({ room_code: roomCode, room_password: roomPassword, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("status", "upcoming")
+      .select()
+      .single();
+    if (error || !data) return null;
+    return toMatch(data);
+  },
+
+  async startMatch(id: string, roomCode?: string, roomPassword?: string): Promise<DbMatch | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data: existing } = await supabase.from("matches").select("room_code, room_password, status").eq("id", id).single();
+    if (!existing || existing.status !== "upcoming") return null;
+    const rc = roomCode ?? existing.room_code;
+    const rp = roomPassword ?? existing.room_password;
+    if (!rc || !rp) return null;
+    const { data, error } = await supabase
+      .from("matches")
+      .update({ status: "ongoing", room_code: rc, room_password: rp, registration_locked: true, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("status", "upcoming")
+      .select()
+      .single();
+    if (error || !data) return null;
+    return toMatch(data);
+  },
+
+  async cancelMatch(id: string): Promise<DbMatch | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data: m } = await supabase.from("matches").select("*").eq("id", id).eq("status", "upcoming").single();
+    if (!m) return null;
+    const { data, error } = await supabase
+      .from("matches")
+      .update({ status: "cancelled", updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("status", "upcoming")
+      .select()
+      .single();
+    if (error || !data) return null;
+    return toMatch(data);
+  },
+
+  async deleteMatch(id: string): Promise<boolean> {
+    const supabase = getSupabase();
+    if (!supabase) return false;
+    const { error } = await supabase.from("matches").delete().eq("id", id);
+    return !error;
+  },
+
+  async renameMatch(id: string, title: string): Promise<DbMatch | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data, error } = await supabase.from("matches").update({ title, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+    if (error || !data) return null;
+    return toMatch(data);
   },
 
   async loginAdmin(adminname: string, password: string): Promise<DbAdmin | null> {

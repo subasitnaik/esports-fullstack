@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { adminStore } from "@/lib/admin-store";
+import { getStore } from "@/lib/store";
 import { getAdminSession } from "@/lib/admin-auth";
 
-function checkMatchAccess(adminId: string, matchId: string): boolean {
-  const admin = adminStore.getAdminById(adminId);
-  const match = adminStore.getMatch(matchId);
+async function checkMatchAccess(adminId: string, matchId: string): Promise<boolean> {
+  const store = getStore();
+  const [admin, match] = await Promise.all([store.getAdminById(adminId), store.getMatch(matchId)]);
   if (!admin || !match) return false;
-  const mode = adminStore.getMode(match.gameModeId);
+  const mode = await store.getMode(match.gameModeId);
   if (!mode) return false;
   if (admin.isMasterAdmin || admin.gamesAccessType === "all") return true;
   return admin.allowedGameIds.includes(mode.gameId);
@@ -19,12 +19,14 @@ export async function POST(
   const admin = await getAdminSession();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  if (!checkMatchAccess(admin.id, id)) {
+  if (!(await checkMatchAccess(admin.id, id))) {
     return NextResponse.json({ error: "No access to this match" }, { status: 403 });
   }
-  const match = adminStore.cancelMatch(id);
+  const store = getStore();
+  const match = await store.cancelMatch(id);
   if (!match) {
     return NextResponse.json({ error: "Match not found or not upcoming" }, { status: 404 });
   }
-  return NextResponse.json(match);
+  const full = await store.getMatch(id);
+  return NextResponse.json(full ?? match);
 }

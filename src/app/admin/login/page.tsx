@@ -76,9 +76,6 @@ export default function AdminLoginPage() {
               {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
-          <p className="mt-6 text-center text-xs text-slate-500">
-            Demo: masteradmin / master123
-          </p>
         </div>
       </div>
     </div>

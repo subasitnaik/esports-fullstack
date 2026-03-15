@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { getAdminSession } from "@/lib/admin-auth";
+import { getSupabase } from "@/lib/supabase";
 
 const UPLOAD_DIR = "public/uploads";
+const BUCKET = "images";
 
 export async function POST(request: Request) {
   const admin = await getAdminSession();
@@ -25,6 +27,21 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(bytes);
     const ext = path.extname(file.name) || ".jpg";
     const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+
+    const supabase = getSupabase();
+    if (supabase) {
+      const storagePath = `uploads/${filename}`;
+      const { error } = await supabase.storage
+        .from(BUCKET)
+        .upload(storagePath, buffer, { contentType: file.type, upsert: true });
+      if (error) {
+        console.error("Supabase upload error:", error);
+        return NextResponse.json({ error: error.message || "Upload failed" }, { status: 500 });
+      }
+      const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
+      return NextResponse.json({ url: publicUrl });
+    }
+
     const uploadDir = path.join(process.cwd(), UPLOAD_DIR);
     await mkdir(uploadDir, { recursive: true });
     const filepath = path.join(uploadDir, filename);

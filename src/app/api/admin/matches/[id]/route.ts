@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { adminStore } from "@/lib/admin-store";
+import { getStore } from "@/lib/store";
 import { getAdminSession } from "@/lib/admin-auth";
 
-function checkMatchAccess(adminId: string, matchId: string): boolean {
-  const admin = adminStore.getAdminById(adminId);
-  const match = adminStore.getMatch(matchId);
+async function checkMatchAccess(adminId: string, matchId: string): Promise<boolean> {
+  const store = getStore();
+  const [admin, match] = await Promise.all([store.getAdminById(adminId), store.getMatch(matchId)]);
   if (!admin || !match) return false;
-  const mode = adminStore.getMode(match.gameModeId);
+  const mode = await store.getMode(match.gameModeId);
   if (!mode) return false;
   if (admin.isMasterAdmin || admin.gamesAccessType === "all") return true;
   return admin.allowedGameIds.includes(mode.gameId);
@@ -19,13 +19,13 @@ export async function GET(
   const admin = await getAdminSession();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  if (!checkMatchAccess(admin.id, id)) {
+  if (!(await checkMatchAccess(admin.id, id))) {
     return NextResponse.json({ error: "No access to this match" }, { status: 403 });
   }
-  const match = adminStore.getMatch(id);
+  const store = getStore();
+  const match = await store.getMatch(id);
   if (!match) return NextResponse.json({ error: "Match not found" }, { status: 404 });
-  const participants = adminStore.getParticipantsForMatch(id);
-  return NextResponse.json({ ...match, participants });
+  return NextResponse.json(match);
 }
 
 export async function DELETE(
@@ -35,10 +35,11 @@ export async function DELETE(
   const admin = await getAdminSession();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  if (!checkMatchAccess(admin.id, id)) {
+  if (!(await checkMatchAccess(admin.id, id))) {
     return NextResponse.json({ error: "No access to this match" }, { status: 403 });
   }
-  const ok = adminStore.deleteMatch(id);
+  const store = getStore();
+  const ok = await store.deleteMatch(id);
   if (!ok) return NextResponse.json({ error: "Match not found" }, { status: 404 });
   return NextResponse.json({ success: true });
 }
@@ -50,20 +51,24 @@ export async function PATCH(
   const admin = await getAdminSession();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  if (!checkMatchAccess(admin.id, id)) {
+  if (!(await checkMatchAccess(admin.id, id))) {
     return NextResponse.json({ error: "No access to this match" }, { status: 403 });
   }
   const body = await request.json();
-  const match = adminStore.getMatch(id);
+  const store = getStore();
+  const match = await store.getMatch(id);
   if (!match) return NextResponse.json({ error: "Match not found" }, { status: 404 });
 
   if (body.title != null && typeof body.title === "string") {
-    adminStore.renameMatch(id, body.title);
+    await store.renameMatch(id, body.title);
   }
   if (match.status === "upcoming" && body.roomCode != null && body.roomPassword != null) {
-    adminStore.updateMatchRoomInfo(id, String(body.roomCode), String(body.roomPassword));
+    const updated = await store.updateMatchRoomInfo(id, String(body.roomCode), String(body.roomPassword));
+    if (updated) {
+      const full = await store.getMatch(id);
+      return NextResponse.json(full!);
+    }
   }
-  const updated = adminStore.getMatch(id);
-  const participants = adminStore.getParticipantsForMatch(id);
-  return NextResponse.json({ ...updated, participants });
+  const updated = await store.getMatch(id);
+  return NextResponse.json(updated!);
 }

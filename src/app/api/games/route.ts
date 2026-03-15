@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { adminStore } from "@/lib/admin-store";
+import { getStore } from "@/lib/store";
 
 export async function GET() {
-  const games = adminStore.games();
+  const store = getStore();
+  const games = await store.games();
   return NextResponse.json(games);
 }

@@ -24,12 +24,6 @@ export function Header() {
           >
             FAQ
           </Link>
-          <Link
-            href="/admin"
-            className="text-sm text-gray-300 transition hover:text-white sm:text-base"
-          >
-            Admin
-          </Link>
           {brand.social.instagram && (
             <a
               href={brand.social.instagram}

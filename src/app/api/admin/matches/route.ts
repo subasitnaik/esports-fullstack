@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminStore } from "@/lib/admin-store";
+import { getStore } from "@/lib/store";
 import { getAdminSession } from "@/lib/admin-auth";
 
 export async function GET(request: Request) {
@@ -7,20 +7,22 @@ export async function GET(request: Request) {
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const modeId = searchParams.get("modeId");
-  let matches = adminStore.matches(modeId ?? undefined);
+  const store = getStore();
   if (modeId && admin.gamesAccessType === "specific" && !admin.isMasterAdmin) {
-    const mode = adminStore.getMode(modeId);
+    const mode = await store.getMode(modeId);
     if (mode && !admin.allowedGameIds.includes(mode.gameId)) {
       return NextResponse.json({ error: "No access to this mode" }, { status: 403 });
     }
   }
+  const matches = await store.matches(modeId ?? undefined);
   return NextResponse.json(matches);
 }
 
 export async function POST(request: Request) {
   const admin = await getAdminSession();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!adminStore.canAccessGames(admin.id)) {
+  const store = getStore();
+  if (!(await store.canAccessGames(admin.id))) {
     return NextResponse.json({ error: "No games access" }, { status: 403 });
   }
   const { gameModeId, title, entryFee, maxParticipants, scheduledAt, matchType, prizePool } =
@@ -41,11 +43,11 @@ export async function POST(request: Request) {
           .map((r) => ({ fromRank: r.fromRank, toRank: r.toRank, coins: r.coins })),
       }
     : { coinsPerKill: 5, totalPrizePool: 0, rankRewards: [{ fromRank: 1, toRank: 5, coins: 30 }] };
-  const mode = adminStore.getMode(gameModeId);
+  const mode = await store.getMode(gameModeId);
   if (mode && admin.gamesAccessType === "specific" && !admin.isMasterAdmin && !admin.allowedGameIds.includes(mode.gameId)) {
     return NextResponse.json({ error: "No access to this game" }, { status: 403 });
   }
-  const match = adminStore.addMatch(
+  const match = await store.addMatch(
     gameModeId,
     title,
     Number(entryFee),
@@ -54,5 +56,6 @@ export async function POST(request: Request) {
     validMatchType,
     validPrizePool
   );
+  if (!match) return NextResponse.json({ error: "Failed to create match" }, { status: 500 });
   return NextResponse.json(match);
 }

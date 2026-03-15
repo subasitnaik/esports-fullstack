@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminStore } from "@/lib/admin-store";
+import { getStore } from "@/lib/store";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -7,6 +7,7 @@ export async function GET(request: Request) {
   if (!gameId) {
     return NextResponse.json({ error: "gameId required" }, { status: 400 });
   }
-  const modes = adminStore.gameModes(gameId);
+  const store = getStore();
+  const modes = await store.gameModes(gameId);
   return NextResponse.json(modes);
 }

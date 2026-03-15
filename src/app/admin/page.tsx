@@ -8,7 +8,7 @@ type Game = { id: string; name: string; imageUrl: string | null };
 type GameMode = { id: string; gameId: string; name: string; imageUrl: string | null };
 type MatchType = "solo" | "duo" | "squad";
 type RankReward = { fromRank: number; toRank: number; coins: number };
-type PrizePool = { coinsPerKill: number; rankRewards: RankReward[] };
+type PrizePool = { coinsPerKill: number; totalPrizePool?: number; rankRewards: RankReward[] };
 type Match = {
   id: string;
   gameModeId: string;
@@ -332,6 +332,56 @@ async function uploadImage(file: File): Promise<string> {
   return url;
 }
 
+const MATCH_TYPE_OPTIONS: { value: MatchType; label: string }[] = [
+  { value: "solo", label: "Solo (1 player)" },
+  { value: "duo", label: "Duo (2 players)" },
+  { value: "squad", label: "Squad (4 players)" },
+];
+
+function MatchTypeDropdown({ value, onChange }: { value: MatchType; onChange: (v: MatchType) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("click", h);
+    return () => document.removeEventListener("click", h);
+  }, []);
+  const label = MATCH_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value;
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="admin-input flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-white outline-none"
+      >
+        <span>{label}</span>
+        <svg className={`h-5 w-5 text-slate-400 transition ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-xl border border-slate-600/50 bg-slate-800 py-1 shadow-xl">
+          {MATCH_TYPE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => {
+                onChange(opt.value);
+                setOpen(false);
+              }}
+              className={`block w-full px-4 py-2.5 text-left text-slate-200 hover:bg-slate-700/80 ${opt.value === value ? "bg-slate-700/50 text-white" : ""}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ImageUpload({
   file,
   previewUrl,
@@ -420,7 +470,11 @@ function GamesSection({
     try {
       let imageUrl: string | null = null;
       if (imageFile) {
-        imageUrl = await uploadImage(imageFile);
+        try {
+          imageUrl = await uploadImage(imageFile);
+        } catch (uploadErr) {
+          console.warn("Image upload failed, adding game without image:", uploadErr);
+        }
       }
       const res = await fetch("/api/admin/games", {
         method: "POST",
@@ -748,7 +802,18 @@ function MatchesSection({
           },
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const text = await res.text();
+        let errMsg = "Failed to create match";
+        try {
+          const errData = JSON.parse(text);
+          if (errData?.error) errMsg = errData.error;
+        } catch {
+          if (text) errMsg = text;
+        }
+        throw new Error(errMsg);
+      }
+      const data = await res.json();
       setTitle("");
       setEntryFee("");
       setMaxParticipants("16");
@@ -757,9 +822,11 @@ function MatchesSection({
       setCoinsPerKill("5");
       setTotalPrizePool("");
       setRankRewards([{ fromRank: 1, toRank: 5, coins: 30 }]);
+      setSelectedMatchId(data?.id ?? null);
+      setMatchTab("upcoming");
       onSuccess();
     } catch (err) {
-      alert("Failed to create match");
+      alert(err instanceof Error ? err.message : "Failed to create match");
     } finally {
       setSubmitting(false);
     }
@@ -791,15 +858,7 @@ function MatchesSection({
           </div>
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-300">Match Type</label>
-            <select
-              value={matchType}
-              onChange={(e) => setMatchType(e.target.value as MatchType)}
-              className="admin-input w-full rounded-xl px-4 py-3 text-white outline-none"
-            >
-              <option value="solo">Solo (1 player)</option>
-              <option value="duo">Duo (2 players)</option>
-              <option value="squad">Squad (4 players)</option>
-            </select>
+            <MatchTypeDropdown value={matchType} onChange={setMatchType} />
           </div>
           <div className="grid gap-5 sm:grid-cols-2">
             <div>
@@ -984,10 +1043,10 @@ function MatchesSection({
                   {((m.prizePool?.totalPrizePool ?? 0) > 0 || (m.prizePool?.coinsPerKill ?? 0) > 0) && (
                     <span className="ml-2 block text-xs">
                       {(m.prizePool?.totalPrizePool ?? 0) > 0 && (
-                        <span className="text-emerald-400/90 block">{m.prizePool.totalPrizePool} prizepool</span>
+                        <span className="text-emerald-400/90 block">{m.prizePool?.totalPrizePool} prizepool</span>
                       )}
                       {(m.prizePool?.coinsPerKill ?? 0) > 0 && (
-                        <span className="text-slate-400 block">{m.prizePool.coinsPerKill} coins/kill</span>
+                        <span className="text-slate-400 block">{m.prizePool?.coinsPerKill} coins/kill</span>
                       )}
                     </span>
                   )}
@@ -1145,6 +1204,7 @@ function MatchDetailView({
   const isUpcoming = match.status === "upcoming";
   const isOngoing = match.status === "ongoing";
   const hasRoomInfo = !!(match.roomCode && match.roomPassword);
+  const canStartMatch = hasRoomInfo || (!!roomCode && !!roomPassword);
   const getKills = (p: ParticipantWithStats) =>
     localKills[p.id] ?? (p.teamMembers ?? []).map((t) => t.kills ?? 0);
 
@@ -1353,7 +1413,7 @@ function MatchDetailView({
             >
               {saving ? "Saving..." : "Save Room Info"}
             </button>
-            {hasRoomInfo && (
+            {canStartMatch && (
               <button
                 type="button"
                 onClick={handleStart}

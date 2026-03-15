@@ -85,23 +85,12 @@ export type AdminPermission = {
   createdAt: string;
 };
 
-let gameIdCounter = 4;
-let modeIdCounter = 6;
-let matchIdCounter = 3;
+let gameIdCounter = 1;
+let modeIdCounter = 1;
+let matchIdCounter = 1;
 
-const games: Game[] = [
-  { id: "1", name: "Valorant", imageUrl: null },
-  { id: "2", name: "PUBG Mobile", imageUrl: null },
-  { id: "3", name: "Free Fire", imageUrl: null },
-];
-
-const gameModes: GameMode[] = [
-  { id: "m1", gameId: "1", name: "Ranked", imageUrl: null },
-  { id: "m2", gameId: "1", name: "Unrated", imageUrl: null },
-  { id: "m3", gameId: "2", name: "Classic", imageUrl: null },
-  { id: "m4", gameId: "2", name: "Arena", imageUrl: null },
-  { id: "m5", gameId: "3", name: "Ranked", imageUrl: null },
-];
+const games: Game[] = [];
+const gameModes: GameMode[] = [];
 
 const defaultPrizePool: PrizePool = {
   coinsPerKill: 5,
@@ -109,45 +98,9 @@ const defaultPrizePool: PrizePool = {
   rankRewards: [{ fromRank: 1, toRank: 5, coins: 30 }, { fromRank: 6, toRank: 10, coins: 20 }],
 };
 
-const matches: Match[] = [
-  {
-    id: "match1",
-    gameModeId: "m1",
-    title: "Weekend Cup #1",
-    entryFee: 50,
-    roomCode: null,
-    roomPassword: null,
-    status: "upcoming",
-    maxParticipants: 16,
-    scheduledAt: "2025-03-15T18:00:00",
-    registrationLocked: false,
-    matchType: "squad",
-    prizePool: defaultPrizePool,
-  },
-  {
-    id: "match2",
-    gameModeId: "m1",
-    title: "Pro Scrim",
-    entryFee: 100,
-    roomCode: "ROOM123",
-    roomPassword: "pass123",
-    status: "ongoing",
-    maxParticipants: 8,
-    scheduledAt: "2025-03-14T14:00:00",
-    registrationLocked: true,
-    matchType: "duo",
-    prizePool: defaultPrizePool,
-  },
-];
-
-const matchParticipants: MatchParticipant[] = [
-  { id: "mp1", matchId: "match2", userId: "10001", teamMembers: [{ inGameName: "ProPlayer1", inGameUid: "123456", kills: 0 }], joinedAt: "2025-03-14T13:00:00" },
-  { id: "mp2", matchId: "match2", userId: "10002", teamMembers: [{ inGameName: "GamerX", inGameUid: "789012", kills: 0 }, { inGameName: "GamerY", inGameUid: "789013", kills: 0 }], joinedAt: "2025-03-14T13:05:00" },
-  { id: "mp3", matchId: "match2", userId: "10001", teamMembers: [{ inGameName: "Sniper99", inGameUid: "111222", kills: 0 }], joinedAt: "2025-03-14T13:10:00" },
-  { id: "mp4", matchId: "match2", userId: "10002", teamMembers: [{ inGameName: "RushB", inGameUid: "333444", kills: 0 }], joinedAt: "2025-03-14T13:15:00" },
-  { id: "mp5", matchId: "match2", userId: "10001", teamMembers: [{ inGameName: "AceKing", inGameUid: "555666", kills: 0 }], joinedAt: "2025-03-14T13:20:00" },
-];
-let matchParticipantIdCounter = 6;
+const matches: Match[] = [];
+const matchParticipants: MatchParticipant[] = [];
+let matchParticipantIdCounter = 1;
 
 // Display order for ongoing matches: when admin sets rank, we swap positions
 const matchParticipantOrder: Record<string, string[]> = {};
@@ -161,11 +114,7 @@ function generateUniqueUserId(): string {
   return id;
 }
 
-const users: User[] = [
-  { id: "10001", email: "demo@example.com", displayName: "Demo", coins: 500, isBlocked: false },
-  { id: "10002", email: "player@test.com", displayName: "Player", coins: 250, isBlocked: false },
-  { id: "10003", email: "test@example.com", displayName: "Test", coins: 500, isBlocked: false },
-];
+const users: User[] = [];
 
 const coinTransactions: CoinTransaction[] = [];
 let transactionIdCounter = 1;
@@ -175,20 +124,6 @@ let depositRequestIdCounter = 1;
 
 const withdrawalRequests: WithdrawalRequest[] = [];
 let withdrawalRequestIdCounter = 1;
-
-// Seed fake deposit and withdrawal requests for testing
-if (depositRequests.length === 0) {
-  depositRequests.push(
-    { id: "dr-fake1", userId: "10001", amount: 200, utr: "UTR123456789", status: "pending", createdAt: "2025-03-14T10:00:00" },
-    { id: "dr-fake2", userId: "10002", amount: 100, utr: "UTR987654321", status: "pending", createdAt: "2025-03-14T09:30:00" },
-  );
-}
-if (withdrawalRequests.length === 0) {
-  withdrawalRequests.push(
-    { id: "wr-fake1", userId: "10001", amount: 150, upiId: "user@paytm", status: "pending", createdAt: "2025-03-14T11:00:00" },
-    { id: "wr-fake2", userId: "10002", amount: 80, upiId: "player@gpay", status: "pending", createdAt: "2025-03-14T09:00:00" },
-  );
-}
 
 let depositQrUrl: string | null = null;
 

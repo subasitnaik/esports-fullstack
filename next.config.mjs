@@ -13,7 +13,7 @@ const nextConfig = {
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
-      "@config": path.resolve(__dirname, "../config"),
+      "@config": path.resolve(__dirname, "config"),
     };
     return config;
   },
