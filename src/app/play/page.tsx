@@ -69,6 +69,15 @@ function PlayPageContent() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"games" | "coins" | "profile">("games");
 
+  const refreshUser = useCallback(() => {
+    api<User>("/api/users/me")
+      .then((fresh) => {
+        setUser(fresh);
+        setStoredUser(fresh);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     const stored = getStoredUser();
     setUser(stored);
@@ -96,15 +105,6 @@ function PlayPageContent() {
     fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
     setStoredUser(null);
     setUser(null);
-  }, []);
-
-  const refreshUser = useCallback(() => {
-    api<User>("/api/users/me")
-      .then((fresh) => {
-        setUser(fresh);
-        setStoredUser(fresh);
-      })
-      .catch(() => {});
   }, []);
 
   if (loading) {
