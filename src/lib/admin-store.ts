@@ -99,8 +99,6 @@ const defaultPrizePool: PrizePool = {
 };
 
 const matches: Match[] = [];
-const matchParticipants: MatchParticipant[] = globalForAdmin.adminStoreMatchParticipants ?? (globalForAdmin.adminStoreMatchParticipants = []);
-let matchParticipantIdCounter = globalForAdmin.adminStoreMatchParticipantIdCounter ?? 1;
 
 // Display order for ongoing matches: when admin sets rank, we swap positions
 const matchParticipantOrder: Record<string, string[]> = {};
@@ -122,6 +120,9 @@ const globalForAdmin = globalThis as unknown as {
   adminStoreDepositRequestIdCounter?: number;
   adminStoreWithdrawalRequestIdCounter?: number;
 };
+
+const matchParticipants: MatchParticipant[] = globalForAdmin.adminStoreMatchParticipants ?? (globalForAdmin.adminStoreMatchParticipants = []);
+let matchParticipantIdCounter = globalForAdmin.adminStoreMatchParticipantIdCounter ?? 1;
 
 function generateUniqueUserId(): string {
   const existing = new Set(users.map((u) => u.id));
