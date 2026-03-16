@@ -104,11 +104,19 @@ function PlayPageContent() {
 
   const [globalToast, setGlobalToast] = useState<string | null>(null);
   const [supportUrl, setSupportUrl] = useState<string | null>(null);
-  useEffect(() => {
+  const fetchSupportUrl = useCallback(() => {
     api<{ url?: string | null }>("/api/customer-support")
       .then((r) => setSupportUrl(r.url || null))
       .catch(() => setSupportUrl(null));
   }, []);
+  useEffect(() => {
+    fetchSupportUrl();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") fetchSupportUrl();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [fetchSupportUrl]);
   useEffect(() => {
     const toastParam = searchParams.get("toast");
     if (toastParam === "deposit_success") {
