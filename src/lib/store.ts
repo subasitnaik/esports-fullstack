@@ -73,6 +73,8 @@ export function getStore() {
       setSignupBonus: (a: number) => db.setSignupBonus(a),
       getDepositQrUrl: () => db.getDepositQrUrl(),
       setDepositQrUrl: (url: string | null) => db.setDepositQrUrl(url),
+      getCustomerSupportUrl: () => db.getCustomerSupportUrl(),
+      setCustomerSupportUrl: (url: string | null) => db.setCustomerSupportUrl(url),
       getAllAdmins: () => db.getAllAdmins(),
       createAdmin: (adminname: string, password: string, opts: { usersAccess: boolean; coinsAccess: boolean; gamesAccessType: "all" | "specific"; allowedGameIds: string[] }) =>
         db.createAdmin(adminname, password, opts),
@@ -151,5 +153,7 @@ export function getStore() {
     setSignupBonus: (a: number) => Promise.resolve(adminStore.setSignupBonus(a)),
     getDepositQrUrl: () => Promise.resolve(adminStore.getDepositQrUrl()),
     setDepositQrUrl: (url: string | null) => Promise.resolve(adminStore.setDepositQrUrl(url)),
+    getCustomerSupportUrl: () => Promise.resolve(adminStore.getCustomerSupportUrl()),
+    setCustomerSupportUrl: (url: string | null) => Promise.resolve(adminStore.setCustomerSupportUrl(url)),
   };
 }

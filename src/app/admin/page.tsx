@@ -1865,6 +1865,9 @@ function UsersSection({
   const [signupBonus, setSignupBonus] = useState(0);
   const [signupBonusInput, setSignupBonusInput] = useState("");
   const [savingBonus, setSavingBonus] = useState(false);
+  const [supportUrl, setSupportUrl] = useState("");
+  const [supportUrlInput, setSupportUrlInput] = useState("");
+  const [savingSupport, setSavingSupport] = useState(false);
   const filteredUsers = usersTab === "blocked" ? users.filter((u) => u.isBlocked) : users;
 
   const fetchSignupBonus = useCallback(async () => {
@@ -1880,9 +1883,26 @@ function UsersSection({
     }
   }, []);
 
+  const fetchSupportUrl = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/customer-support");
+      if (res.ok) {
+        const { url } = await res.json();
+        setSupportUrl(url || "");
+        setSupportUrlInput(url || "");
+      }
+    } catch {
+      setSupportUrlInput("");
+    }
+  }, []);
+
   useEffect(() => {
     fetchSignupBonus();
   }, [fetchSignupBonus]);
+
+  useEffect(() => {
+    fetchSupportUrl();
+  }, [fetchSupportUrl]);
 
   const handleSaveSignupBonus = async () => {
     const num = Number(signupBonusInput);
@@ -1909,8 +1929,52 @@ function UsersSection({
     }
   };
 
+  const handleSaveSupportUrl = async () => {
+    const trimmed = supportUrlInput.trim();
+    setSavingSupport(true);
+    try {
+      const res = await fetch("/api/admin/customer-support", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: trimmed || null }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { url } = await res.json();
+      setSupportUrl(url || "");
+      setSupportUrlInput(url || "");
+      onSuccess();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSavingSupport(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      <section className="admin-card rounded-2xl p-6 sm:p-8">
+        <h3 className="mb-2 text-sm font-medium text-slate-300">Customer Support Button</h3>
+        <p className="mb-4 text-xs text-slate-400">
+          The &quot;Support&quot; button in the user app header will link here. Use WhatsApp (e.g. https://wa.me/919876543210), Telegram (e.g. https://t.me/yourusername), or any URL. Leave empty to hide the button.
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <input
+            type="url"
+            value={supportUrlInput}
+            onChange={(e) => setSupportUrlInput(e.target.value)}
+            placeholder="https://wa.me/919876543210 or https://t.me/username"
+            className="admin-input min-w-0 flex-1 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500"
+          />
+          <button
+            type="button"
+            onClick={handleSaveSupportUrl}
+            disabled={savingSupport}
+            className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-500 disabled:opacity-50"
+          >
+            {savingSupport ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </section>
       <section className="admin-card rounded-2xl p-6 sm:p-8">
         <h3 className="mb-2 text-sm font-medium text-slate-300">Signup Bonus</h3>
         <p className="mb-4 text-xs text-slate-400">

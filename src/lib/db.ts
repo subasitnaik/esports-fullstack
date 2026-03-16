@@ -496,6 +496,21 @@ export const db = {
     return url;
   },
 
+  async getCustomerSupportUrl(): Promise<string | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data } = await supabase.from("app_settings").select("value").eq("key", "customer_support_url").single();
+    const v = data?.value?.trim();
+    return v || null;
+  },
+
+  async setCustomerSupportUrl(url: string | null): Promise<string | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    await supabase.from("app_settings").upsert({ key: "customer_support_url", value: url ?? "", updated_at: new Date().toISOString() }, { onConflict: "key" });
+    return url || null;
+  },
+
   async games(adminId?: string): Promise<{ id: string; name: string; imageUrl: string | null }[]> {
     const supabase = getSupabase();
     if (!supabase) return [];

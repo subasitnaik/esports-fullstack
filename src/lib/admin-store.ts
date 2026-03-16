@@ -111,6 +111,7 @@ const globalForAdmin = globalThis as unknown as {
   adminIdCounter?: number;
   withdrawalChargePercent?: number;
   signupBonus?: number;
+  customerSupportUrl?: string | null;
   adminStoreUsers?: User[];
   adminStoreCoinTransactions?: CoinTransaction[];
   adminStoreDepositRequests?: DepositRequest[];
@@ -151,6 +152,7 @@ function nextWrId() {
 }
 
 let depositQrUrl: string | null = null;
+let customerSupportUrl: string | null = globalForAdmin.customerSupportUrl ?? null;
 
 const initialAdminPermissions: AdminPermission[] = [
   {
@@ -618,6 +620,12 @@ export const adminStore = {
   setDepositQrUrl: (url: string | null) => {
     depositQrUrl = url;
     return depositQrUrl;
+  },
+  getCustomerSupportUrl: () => customerSupportUrl,
+  setCustomerSupportUrl: (url: string | null) => {
+    customerSupportUrl = url;
+    globalForAdmin.customerSupportUrl = url;
+    return customerSupportUrl;
   },
 
   // Admin auth & permissions
