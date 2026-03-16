@@ -2468,7 +2468,20 @@ function CoinsSection({
             </div>
           </section>
           <section className="admin-card rounded-2xl p-6 sm:p-8">
-            <h3 className="mb-3 text-sm font-medium text-slate-300">Pending Deposit Requests</h3>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-medium text-slate-300">Pending Deposit Requests</h3>
+              <button
+                type="button"
+                onClick={fetchDeposits}
+                disabled={loadingDeposits}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-700/50 text-slate-400 hover:bg-slate-600/50 hover:text-white disabled:opacity-50"
+                title="Refresh list"
+              >
+                <svg className={`h-4 w-4 ${loadingDeposits ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
             {loadingDeposits ? (
               <div className="flex justify-center py-8">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-orange-500/30 border-t-orange-500" />
@@ -2559,7 +2572,20 @@ function CoinsSection({
           </div>
         </section>
         <section className="admin-card rounded-2xl p-6 sm:p-8">
-          <h3 className="mb-3 text-sm font-medium text-slate-300">Pending Withdrawal Requests</h3>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-medium text-slate-300">Pending Withdrawal Requests</h3>
+            <button
+              type="button"
+              onClick={fetchWithdrawals}
+              disabled={loadingWithdrawals}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-700/50 text-slate-400 hover:bg-slate-600/50 hover:text-white disabled:opacity-50"
+              title="Refresh list"
+            >
+              <svg className={`h-4 w-4 ${loadingWithdrawals ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
           {loadingWithdrawals ? (
             <div className="flex justify-center py-8">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-orange-500/30 border-t-orange-500" />

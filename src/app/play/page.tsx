@@ -635,6 +635,16 @@ function CoinsTab({ user, onRefreshUser, onShowToast, initialSubTab }: { user: U
     if (subTab === "history" && onRefreshUser) onRefreshUser();
   }, [subTab, onRefreshUser]);
 
+  const [refreshingTx, setRefreshingTx] = useState(false);
+  const refreshTransactions = useCallback(() => {
+    setRefreshingTx(true);
+    api<Transaction[]>(`/api/users/${user.id}/transactions`)
+      .then((r) => setTransactions(r ?? []))
+      .catch(() => {})
+      .finally(() => setRefreshingTx(false));
+    onRefreshUser?.();
+  }, [user.id, onRefreshUser]);
+
   const depositAmountNum = parseInt(depositAmount, 10);
   const canProceedToPayment = !isNaN(depositAmountNum) && depositAmountNum > 0;
 
@@ -745,8 +755,19 @@ function CoinsTab({ user, onRefreshUser, onShowToast, initialSubTab }: { user: U
         )}
         {subTab === "history" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h3 className="text-lg font-semibold text-white">Transaction History</h3>
+              <button
+                type="button"
+                onClick={refreshTransactions}
+                disabled={refreshingTx}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/5 text-[#94A3B8] hover:bg-white/10 hover:text-white disabled:opacity-50"
+                title="Refresh"
+              >
+                <svg className={`h-5 w-5 ${refreshingTx ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
             </div>
             <div className="space-y-3">
               {transactions.map((tx) => (
