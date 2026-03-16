@@ -70,9 +70,16 @@ function PlayPageContent() {
   const [tab, setTab] = useState<"games" | "coins" | "profile">("games");
 
   useEffect(() => {
-    setUser(getStoredUser());
+    const stored = getStoredUser();
+    setUser(stored);
     setLoading(false);
   }, []);
+
+  useEffect(() => {
+    const stored = getStoredUser();
+    if (!stored) return;
+    refreshUser();
+  }, [refreshUser]);
 
   useEffect(() => {
     const t = searchParams.get("tab");
@@ -89,6 +96,15 @@ function PlayPageContent() {
     fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
     setStoredUser(null);
     setUser(null);
+  }, []);
+
+  const refreshUser = useCallback(() => {
+    api<User>("/api/users/me")
+      .then((fresh) => {
+        setUser(fresh);
+        setStoredUser(fresh);
+      })
+      .catch(() => {});
   }, []);
 
   if (loading) {
@@ -150,7 +166,7 @@ function PlayPageContent() {
           ))}
         </div>
         {tab === "games" && <GamesTab user={user} />}
-        {tab === "coins" && <CoinsTab user={user} initialSubTab={searchParams.get("tab") === "history" ? "history" : undefined} />}
+        {tab === "coins" && <CoinsTab user={user} onRefreshUser={refreshUser} initialSubTab={searchParams.get("tab") === "history" ? "history" : undefined} />}
         {tab === "profile" && <ProfileTab user={user} onLogout={onLogout} />}
       </main>
     </>
@@ -567,7 +583,7 @@ function MatchCard({ match, user }: { match: Match; user: User }) {
   );
 }
 
-function CoinsTab({ user, initialSubTab }: { user: User; initialSubTab?: "deposit" | "withdraw" | "history" }) {
+function CoinsTab({ user, onRefreshUser, initialSubTab }: { user: User; onRefreshUser?: () => void; initialSubTab?: "deposit" | "withdraw" | "history" }) {
   const router = useRouter();
   const [subTab, setSubTab] = useState<"deposit" | "withdraw" | "history">(initialSubTab ?? "deposit");
 
@@ -592,6 +608,10 @@ function CoinsTab({ user, initialSubTab }: { user: User; initialSubTab?: "deposi
       setTransactions(tx);
     }).catch(() => {});
   }, [user.id]);
+
+  useEffect(() => {
+    if (subTab === "history" && onRefreshUser) onRefreshUser();
+  }, [subTab, onRefreshUser]);
 
   const depositAmountNum = parseInt(depositAmount, 10);
   const canProceedToPayment = !isNaN(depositAmountNum) && depositAmountNum > 0;
