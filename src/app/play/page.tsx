@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { brand } from "@config/brand";
 
 type User = { id: string; email: string; displayName: string; coins: number; isBlocked?: boolean };
 type Game = { id: string; name: string; imageUrl: string | null };
@@ -139,7 +140,7 @@ function PlayPageContent() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </Link>
-          <span className="font-semibold text-white">Esports App</span>
+          <span className="font-semibold text-white">{brand.appName}</span>
           <div className="w-20" />
         </header>
         <AuthScreen onLoggedIn={onLoggedIn} />
@@ -160,7 +161,7 @@ function PlayPageContent() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </Link>
-        <span className="font-semibold text-white">Esports App</span>
+        <span className="font-semibold text-white">{brand.appName}</span>
         <button
           onClick={onLogout}
           className="text-sm text-[#94A3B8] hover:text-white"

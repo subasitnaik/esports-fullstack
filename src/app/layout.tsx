@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { brand } from "@config/brand";
+import { brand, resolveMeta } from "@config/brand";
 
 export const metadata: Metadata = {
-  title: brand.meta.title,
-  description: brand.meta.description,
+  title: resolveMeta(brand.meta.title),
+  description: resolveMeta(brand.meta.description),
 };
 
 export default function RootLayout({

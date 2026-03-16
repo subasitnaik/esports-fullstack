@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { brand } from "@config/brand";
+import { getPlatformRef } from "@/lib/platform-ref";
 
 export function Footer() {
   return (
@@ -104,17 +105,21 @@ export function Footer() {
           <p className="text-center text-sm text-stone-500 sm:text-left">
             © {new Date().getFullYear()} {brand.appName}. {brand.footer.copyright}
           </p>
-          {brand.credit?.url && (
-            <a
-              href={brand.credit.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 transition hover:opacity-80"
-            >
-              <span className="text-xs text-stone-600">{brand.credit.prefix}</span>
-              <span className="font-ultimatum text-sm font-bold text-orange-500/80">{brand.credit.label}</span>
-            </a>
-          )}
+          {(() => {
+            const ref = getPlatformRef();
+            if (!ref.url || !ref.label) return null;
+            return (
+              <a
+                href={ref.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 transition hover:opacity-80"
+              >
+                <span className="text-xs text-stone-600">{ref.prefix}</span>
+                <span className="font-ultimatum text-sm font-bold text-orange-500/80">{ref.label}</span>
+              </a>
+            );
+          })()}
         </div>
       </div>
     </footer>
