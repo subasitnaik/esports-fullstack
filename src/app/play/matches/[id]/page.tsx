@@ -91,6 +91,7 @@ function MatchDetailContent() {
   const [inGameUid, setInGameUid] = useState("");
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [hasJoinedOverride, setHasJoinedOverride] = useState(false);
 
   const refreshUser = useCallback(() => {
     api<User>("/api/users/me")
@@ -123,7 +124,11 @@ function MatchDetailContent() {
       .catch(() => setParticipants([]));
   }, [id]);
 
-  const hasJoined = user && participants.some((p) => p.userId === user.id);
+  useEffect(() => {
+    setHasJoinedOverride(false);
+  }, [user?.id]);
+
+  const hasJoined = (user && participants.some((p) => p.userId === user.id)) || hasJoinedOverride;
 
   const fetchParticipants = useCallback(() => {
     if (!id) return;
@@ -156,6 +161,7 @@ function MatchDetailContent() {
       if (msg.toLowerCase().includes("already registered")) {
         setInGameName("");
         setInGameUid("");
+        setHasJoinedOverride(true);
         await fetchParticipants();
       } else {
         setJoinError(msg);
@@ -170,7 +176,8 @@ function MatchDetailContent() {
     user &&
     user.coins >= (match?.entryFee ?? 0) &&
     !user.isBlocked &&
-    !hasJoined;
+    !hasJoined &&
+    !hasJoinedOverride;
   const backHref = modeId ? `/play?tab=games&modeId=${modeId}` : "/play";
 
   if (loading) {
@@ -339,16 +346,33 @@ function MatchDetailContent() {
           </div>
         )}
 
-        {match.status !== "upcoming" && !hasJoined && !canJoin && user.coins < match.entryFee && (
+        {match.status === "upcoming" && !hasJoined && !canJoin && user.coins < (match.entryFee ?? 0) && (
+          <div className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6">
+            <p className="font-medium text-amber-400">
+              You need {match.entryFee} coins to join. You have {user.coins} coins.
+            </p>
+            <p className="mt-1 text-sm text-[#94A3B8]">Add coins from the Coins tab to join this match.</p>
+          </div>
+        )}
+
+        {match.status !== "upcoming" && !hasJoined && user.coins < (match.entryFee ?? 0) && (
           <p className="mt-6 text-center text-sm text-[#94A3B8]">
             Registration closed. You need {match.entryFee} coins to join upcoming matches.
           </p>
         )}
 
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
-          <h2 className="text-lg font-semibold text-white">
-            Participants ({participants.length}/{match.maxParticipants ?? 100})
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">
+              Participants ({participants.length}/{match.maxParticipants ?? 100})
+            </h2>
+            <button
+              onClick={fetchParticipants}
+              className="rounded-lg px-3 py-1.5 text-sm text-[#94A3B8] hover:bg-white/5 hover:text-white"
+            >
+              Refresh
+            </button>
+          </div>
           {participants.length === 0 ? (
             <p className="mt-4 text-sm text-[#94A3B8]">No participants yet</p>
           ) : (
