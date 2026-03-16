@@ -99,8 +99,8 @@ const defaultPrizePool: PrizePool = {
 };
 
 const matches: Match[] = [];
-const matchParticipants: MatchParticipant[] = [];
-let matchParticipantIdCounter = 1;
+const matchParticipants: MatchParticipant[] = globalForAdmin.adminStoreMatchParticipants ?? (globalForAdmin.adminStoreMatchParticipants = []);
+let matchParticipantIdCounter = globalForAdmin.adminStoreMatchParticipantIdCounter ?? 1;
 
 // Display order for ongoing matches: when admin sets rank, we swap positions
 const matchParticipantOrder: Record<string, string[]> = {};
@@ -116,6 +116,8 @@ const globalForAdmin = globalThis as unknown as {
   adminStoreCoinTransactions?: CoinTransaction[];
   adminStoreDepositRequests?: DepositRequest[];
   adminStoreWithdrawalRequests?: WithdrawalRequest[];
+  adminStoreMatchParticipants?: MatchParticipant[];
+  adminStoreMatchParticipantIdCounter?: number;
   adminStoreTransactionIdCounter?: number;
   adminStoreDepositRequestIdCounter?: number;
   adminStoreWithdrawalRequestIdCounter?: number;
@@ -563,6 +565,7 @@ export const adminStore = {
   },
   addMatchParticipant: (matchId: string, userId: string, teamMembers: { inGameName: string; inGameUid: string }[]) => {
     const id = `mp${matchParticipantIdCounter++}`;
+    globalForAdmin.adminStoreMatchParticipantIdCounter = matchParticipantIdCounter;
     const p: MatchParticipant = {
       id,
       matchId,
@@ -594,8 +597,10 @@ export const adminStore = {
     const participants = matchParticipants.filter((p) => p.matchId === matchId);
     if (participants.length >= m.maxParticipants) return { error: "Match is full" };
     const members = [{ inGameName, inGameUid }, ...(teamMembers ?? [])].slice(0, 4);
+    const newId = matchParticipantIdCounter++;
+    globalForAdmin.adminStoreMatchParticipantIdCounter = matchParticipantIdCounter;
     matchParticipants.push({
-      id: `mp${matchParticipantIdCounter++}`,
+      id: `mp${newId}`,
       matchId,
       userId: appUserId,
       teamMembers: members.map((tm) => ({ ...tm, kills: 0 })),

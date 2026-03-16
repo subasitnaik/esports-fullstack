@@ -20,6 +20,7 @@ type MatchDetail = {
 };
 type Participant = {
   id: string;
+  userId?: string;
   teamMembers: { inGameName: string; inGameUid: string; kills?: number }[];
   joinedAt: string;
   rank?: number;
@@ -122,6 +123,15 @@ function MatchDetailContent() {
       .catch(() => setParticipants([]));
   }, [id]);
 
+  const hasJoined = user && participants.some((p) => p.userId === user.id);
+
+  const fetchParticipants = useCallback(() => {
+    if (!id) return;
+    api<Participant[]>(`/api/matches/${id}/participants`)
+      .then(setParticipants)
+      .catch(() => setParticipants([]));
+  }, [id]);
+
   const handleJoin = async () => {
     if (!inGameName.trim() || !inGameUid.trim()) {
       setJoinError("Enter in-game name and UID");
@@ -137,18 +147,30 @@ function MatchDetailContent() {
           inGameUid: inGameUid.trim(),
         }),
       });
+      setInGameName("");
+      setInGameUid("");
       refreshUser();
-      api<Participant[]>(`/api/matches/${id}/participants`)
-        .then(setParticipants)
-        .catch(() => {});
+      await fetchParticipants();
     } catch (e) {
-      setJoinError(e instanceof Error ? e.message : "Failed to join");
+      const msg = e instanceof Error ? e.message : "Failed to join";
+      if (msg.toLowerCase().includes("already registered")) {
+        setInGameName("");
+        setInGameUid("");
+        await fetchParticipants();
+      } else {
+        setJoinError(msg);
+      }
     } finally {
       setJoinLoading(false);
     }
   };
 
-  const canJoin = match?.status === "upcoming" && user && user.coins >= (match?.entryFee ?? 0) && !user.isBlocked;
+  const canJoin =
+    match?.status === "upcoming" &&
+    user &&
+    user.coins >= (match?.entryFee ?? 0) &&
+    !user.isBlocked &&
+    !hasJoined;
   const backHref = modeId ? `/play?tab=games&modeId=${modeId}` : "/play";
 
   if (loading) {
@@ -279,6 +301,17 @@ function MatchDetailContent() {
           )}
         </div>
 
+        {hasJoined && match.status === "upcoming" && (
+          <div className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6">
+            <p className="flex items-center gap-2 font-semibold text-emerald-400">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              You have already registered for this match
+            </p>
+          </div>
+        )}
+
         {canJoin && (
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
             <h2 className="text-lg font-semibold text-white">Join Match</h2>
@@ -306,7 +339,7 @@ function MatchDetailContent() {
           </div>
         )}
 
-        {match.status !== "upcoming" && !canJoin && user.coins < match.entryFee && (
+        {match.status !== "upcoming" && !hasJoined && !canJoin && user.coins < match.entryFee && (
           <p className="mt-6 text-center text-sm text-[#94A3B8]">
             Registration closed. You need {match.entryFee} coins to join upcoming matches.
           </p>
