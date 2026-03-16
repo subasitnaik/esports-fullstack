@@ -26,6 +26,10 @@ export async function POST(request: Request) {
     }
 
     const store = getStore();
+    const user = await store.getUser(userId);
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (user.isBlocked) return NextResponse.json({ error: "Account is blocked" }, { status: 403 });
+
     const req = await store.addWithdrawalRequest(userId, num, upiId.trim());
     if (!req) return NextResponse.json({ error: "Failed to create withdrawal request" }, { status: 400 });
     return NextResponse.json(req);

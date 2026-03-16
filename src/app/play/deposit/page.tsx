@@ -49,6 +49,18 @@ function DepositPaymentPageContent() {
   }, []);
 
   useEffect(() => {
+    api<User>("/api/users/me")
+      .then((u) => {
+        setUser(u);
+        if (typeof window !== "undefined" && u) {
+          try { localStorage.setItem(USER_KEY, JSON.stringify(u)); } catch {}
+        }
+        if (u?.isBlocked) router.replace("/play");
+      })
+      .catch(() => {});
+  }, [router]);
+
+  useEffect(() => {
     api<{ url?: string }>("/api/deposit-qr")
       .then((r) => r.url ?? null)
       .then(setDepositQr)

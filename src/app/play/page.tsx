@@ -97,6 +97,10 @@ function PlayPageContent() {
     else if (t === "history") setTab("coins");
   }, [searchParams]);
 
+  useEffect(() => {
+    if (user?.isBlocked) setTab("profile");
+  }, [user?.isBlocked]);
+
   const [globalToast, setGlobalToast] = useState<string | null>(null);
   useEffect(() => {
     const toastParam = searchParams.get("toast");
@@ -167,22 +171,28 @@ function PlayPageContent() {
       </header>
       <main className="mx-auto max-w-2xl pb-24">
         <div className="flex gap-2 border-b border-white/10 px-4 py-3">
-          {(["games", "coins", "profile"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`rounded-full px-4 py-2 text-sm font-medium capitalize transition ${
-                tab === t
-                  ? "bg-[#f97316] text-white"
-                  : "text-[#94A3B8] hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              {t}
+          {user.isBlocked ? (
+            <button className="rounded-full bg-[#f97316] px-4 py-2 text-sm font-medium text-white" disabled>
+              Profile
             </button>
-          ))}
+          ) : (
+            (["games", "coins", "profile"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`rounded-full px-4 py-2 text-sm font-medium capitalize transition ${
+                  tab === t
+                    ? "bg-[#f97316] text-white"
+                    : "text-[#94A3B8] hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                {t}
+              </button>
+            ))
+          )}
         </div>
-        {tab === "games" && <GamesTab user={user} />}
-        {tab === "coins" && (
+        {!user.isBlocked && tab === "games" && <GamesTab user={user} />}
+        {!user.isBlocked && tab === "coins" && (
           <CoinsTab
             user={user}
             onRefreshUser={refreshUser}
@@ -870,6 +880,11 @@ function ProfileTab({ user, onLogout }: { user: User; onLogout: () => void }) {
             <span className="font-bold text-[#f97316]">{user.coins}</span>
           </div>
         </div>
+        {user.isBlocked && (
+          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+            <p className="text-center font-medium text-amber-400">Your account is blocked. Contact customer support.</p>
+          </div>
+        )}
       </div>
       <button
         onClick={onLogout}
