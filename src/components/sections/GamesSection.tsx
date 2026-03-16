@@ -111,7 +111,7 @@ export function GamesSection() {
   };
 
   return (
-    <Section id="games" background="card" className="pb-24">
+    <Section id="games" background="card" className="pb-8">
       <div className="text-center">
         <h2 className="text-2xl font-bold text-text sm:text-3xl">Games</h2>
       </div>

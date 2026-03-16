@@ -45,7 +45,7 @@ export function FAQSection() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <Section id="faq" background="elevated">
+    <Section id="faq" background="elevated" className="pt-8">
       <div className="text-center">
         <h2 className="text-2xl font-bold text-text sm:text-3xl">FAQ</h2>
         <p className="mt-4 text-text-muted">Frequently asked questions</p>
