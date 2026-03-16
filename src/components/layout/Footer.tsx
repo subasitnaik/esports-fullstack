@@ -104,15 +104,17 @@ export function Footer() {
           <p className="text-center text-sm text-stone-500 sm:text-left">
             © {new Date().getFullYear()} {brand.appName}. {brand.footer.copyright}
           </p>
-          <a
-            href="https://www.youtube.com/@MoonStack"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 transition hover:opacity-80"
-          >
-            <span className="text-xs text-stone-600">Made By</span>
-            <span className="font-ultimatum text-sm font-bold text-orange-500/80">Moonstack</span>
-          </a>
+          {brand.credit?.url && (
+            <a
+              href={brand.credit.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 transition hover:opacity-80"
+            >
+              <span className="text-xs text-stone-600">{brand.credit.prefix}</span>
+              <span className="font-ultimatum text-sm font-bold text-orange-500/80">{brand.credit.label}</span>
+            </a>
+          )}
         </div>
       </div>
     </footer>

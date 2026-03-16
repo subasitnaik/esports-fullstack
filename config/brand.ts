@@ -96,6 +96,13 @@ export const brand = {
     platforms: "Available for iOS and Android",
   },
 
+  /** Footer credit - "Made By X" link. Set url to "" to hide. */
+  credit: {
+    prefix: "Made By",
+    label: "Moonstack",
+    url: "https://www.youtube.com/@MoonStack",
+  },
+
   /** Footer */
   footer: {
     links: [
