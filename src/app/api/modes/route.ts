@@ -3,9 +3,16 @@ import { getStore } from "@/lib/store";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const modeId = searchParams.get("modeId");
+  if (modeId) {
+    const store = getStore();
+    const mode = await store.getMode(modeId);
+    if (!mode) return NextResponse.json({ error: "Mode not found" }, { status: 404 });
+    return NextResponse.json(mode);
+  }
   const gameId = searchParams.get("gameId");
   if (!gameId) {
-    return NextResponse.json({ error: "gameId required" }, { status: 400 });
+    return NextResponse.json({ error: "gameId or modeId required" }, { status: 400 });
   }
   const store = getStore();
   const modes = await store.gameModes(gameId);

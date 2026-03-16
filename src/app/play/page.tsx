@@ -18,6 +18,8 @@ type Match = {
   status: string;
   matchType?: string;
   maxParticipants?: number;
+  startsAt?: string;
+  prizePool?: { coinsPerKill?: number; totalPrizePool?: number };
 };
 type Transaction = { id: string; amount: number; type: string; note: string | null; status?: "pending" | "successful" | "failed" | "refunded"; createdAt: string };
 
@@ -214,7 +216,7 @@ function PlayPageContent() {
             ))
           )}
         </div>
-        {!user.isBlocked && tab === "games" && <GamesTab user={user} />}
+        {!user.isBlocked && tab === "games" && <GamesTab user={user} searchParams={searchParams} />}
         {!user.isBlocked && tab === "coins" && (
           <CoinsTab
             user={user}
@@ -382,7 +384,7 @@ function AuthScreen({ onLoggedIn }: { onLoggedIn: (u: User) => void }) {
   );
 }
 
-function GamesTab({ user }: { user: User }) {
+function GamesTab({ user, searchParams }: { user: User; searchParams: URLSearchParams }) {
   const [games, setGames] = useState<Game[]>([]);
   const [modes, setModes] = useState<GameMode[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -397,6 +399,21 @@ function GamesTab({ user }: { user: User }) {
       .finally(() => setLoading(false));
   }, []);
 
+  const modeIdFromUrl = searchParams.get("modeId");
+
+  useEffect(() => {
+    if (!modeIdFromUrl || games.length === 0) return;
+    api<GameMode>(`/api/modes?modeId=${modeIdFromUrl}`)
+      .then((mode) => {
+        const game = games.find((g) => g.id === mode.gameId);
+        if (game) {
+          setSelectedGame(game);
+          setSelectedMode(mode);
+        }
+      })
+      .catch(() => {});
+  }, [modeIdFromUrl, games]);
+
   useEffect(() => {
     if (!selectedGame) {
       setModes([]);
@@ -407,7 +424,7 @@ function GamesTab({ user }: { user: User }) {
     api<GameMode[]>(`/api/modes?gameId=${selectedGame.id}`)
       .then(setModes)
       .catch(() => setModes([]));
-    setSelectedMode(null);
+    if (!modeIdFromUrl) setSelectedMode(null);
     setMatches([]);
   }, [selectedGame]);
 
@@ -431,20 +448,12 @@ function GamesTab({ user }: { user: User }) {
 
   if (selectedMode) {
     return (
-      <div className="p-4">
-        <button
-          onClick={() => setSelectedMode(null)}
-          className="mb-4 text-sm text-[#f97316] hover:underline"
-        >
-          ← Back to Modes
-        </button>
-        <h2 className="text-lg font-semibold text-white">Matches</h2>
-        <div className="mt-4 space-y-2">
-          {matches.map((m) => (
-            <MatchCard key={m.id} match={m} user={user} />
-          ))}
-        </div>
-      </div>
+      <MatchesView
+        matches={matches}
+        user={user}
+        selectedMode={selectedMode}
+        onBack={() => setSelectedMode(null)}
+      />
     );
   }
 
@@ -523,119 +532,143 @@ function GamesTab({ user }: { user: User }) {
   );
 }
 
-function MatchCard({ match, user }: { match: Match; user: User }) {
-  const [showJoin, setShowJoin] = useState(false);
-  const [showDetail, setShowDetail] = useState(false);
-  const [inGameName, setInGameName] = useState("");
-  const [inGameUid, setInGameUid] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function formatMatchDateTime(iso: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
-  const handleJoin = async () => {
-    if (!inGameName.trim() || !inGameUid.trim()) {
-      setError("Fill in-game name and UID");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      await api(`/api/matches/${match.id}/join`, {
-        method: "POST",
-        body: JSON.stringify({
-          inGameName: inGameName.trim(),
-          inGameUid: inGameUid.trim(),
-        }),
-      });
-      setShowJoin(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to join");
-    } finally {
-      setLoading(false);
-    }
-  };
+function MatchTypeTag({ type }: { type: string }) {
+  const t = (type || "solo").toLowerCase();
+  const styles =
+    t === "solo"
+      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+      : t === "duo"
+        ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
+        : "bg-violet-500/20 text-violet-400 border-violet-500/40";
+  return (
+    <span className={`rounded-md border px-2 py-0.5 text-xs font-semibold uppercase ${styles}`}>
+      {t}
+    </span>
+  );
+}
 
-  const canJoin = match.status === "upcoming" && user.coins >= match.entryFee;
+function MatchesView({
+  matches,
+  user,
+  selectedMode,
+  onBack,
+}: {
+  matches: Match[];
+  user: User;
+  selectedMode: GameMode;
+  onBack: () => void;
+}) {
+  const [statusTab, setStatusTab] = useState<"upcoming" | "ongoing" | "completed">("upcoming");
+  const isCompleted = (s: string) => s === "completed" || s === "ended" || s === "cancelled";
+  const filtered =
+    statusTab === "upcoming"
+      ? matches.filter((m) => m.status === "upcoming")
+      : statusTab === "ongoing"
+        ? matches.filter((m) => m.status === "ongoing")
+        : matches.filter((m) => isCompleted(m.status));
 
   return (
-    <>
-      <button
-        onClick={() => (canJoin ? setShowJoin(true) : setShowDetail(true))}
-        className="flex w-full flex-col rounded-xl border border-white/10 bg-white/5 p-4 text-left transition hover:bg-white/10"
-      >
-        <span className="font-medium text-white">{match.title}</span>
-        <span className="mt-1 text-sm text-[#94A3B8]">
-          {match.entryFee} coins • {match.matchType || "solo"} • {match.status}
-        </span>
+    <div className="p-4">
+      <button onClick={onBack} className="mb-4 text-sm text-[#f97316] hover:underline">
+        ← Back to Modes
       </button>
-
-      {showJoin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="max-w-md rounded-2xl border border-white/10 bg-[#0c0c0e] p-6">
-            <h3 className="text-lg font-semibold text-white">Join: {match.title}</h3>
-            <p className="mt-2 text-sm text-[#94A3B8]">Entry fee: {match.entryFee} coins</p>
-            {user.coins < match.entryFee && (
-              <p className="mt-2 text-sm text-red-400">Insufficient coins. You have {user.coins}</p>
-            )}
-            {user.coins >= match.entryFee && (
-              <>
-                <input
-                  value={inGameName}
-                  onChange={(e) => setInGameName(e.target.value)}
-                  placeholder="In-game Name"
-                  className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-[#64748B]"
-                />
-                <input
-                  value={inGameUid}
-                  onChange={(e) => setInGameUid(e.target.value)}
-                  placeholder="In-game UID"
-                  className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-[#64748B]"
-                />
-                {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
-              </>
-            )}
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setShowJoin(false)}
-                className="flex-1 rounded-xl border border-white/20 py-2 text-[#94A3B8] hover:bg-white/5"
-              >
-                Cancel
-              </button>
-              {user.coins >= match.entryFee && (
-                <button
-                  onClick={handleJoin}
-                  disabled={loading}
-                  className="flex-1 rounded-xl bg-[#f97316] py-2 font-semibold text-white disabled:opacity-50"
-                >
-                  {loading ? "Joining..." : "Join"}
-                </button>
-              )}
-            </div>
+      <h2 className="text-lg font-semibold text-white">Matches</h2>
+      <div className="mt-4 flex gap-2 rounded-xl bg-white/5 p-1">
+        {(["upcoming", "ongoing", "completed"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setStatusTab(tab)}
+            className={`flex-1 rounded-lg py-2 text-sm font-medium capitalize transition ${
+              statusTab === tab ? "bg-[#f97316] text-white" : "text-[#94A3B8] hover:bg-white/5 hover:text-white"
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+      <div className="mt-4 space-y-3">
+        {filtered.length === 0 ? (
+          <div className="rounded-xl border border-white/10 bg-white/5 py-12 text-center text-[#94A3B8]">
+            No {statusTab} matches
           </div>
-        </div>
-      )}
+        ) : (
+          filtered.map((m) => (
+            <MatchCard key={m.id} match={m} user={user} selectedMode={selectedMode} />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
 
-      {showDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="max-w-md rounded-2xl border border-white/10 bg-[#0c0c0e] p-6">
-            <h3 className="text-lg font-semibold text-white">{match.title}</h3>
-            <p className="mt-2 text-sm text-[#94A3B8]">Status: {match.status}</p>
-            <p className="text-sm text-[#94A3B8]">Entry: {match.entryFee} coins</p>
-            {match.status === "ongoing" && match.roomCode && match.roomPassword && (
-              <div className="mt-4">
-                <p className="font-semibold text-[#f97316]">Room Code: {match.roomCode}</p>
-                <p className="font-semibold text-[#f97316]">Password: {match.roomPassword}</p>
-              </div>
-            )}
-            <button
-              onClick={() => setShowDetail(false)}
-              className="mt-6 w-full rounded-xl bg-[#f97316] py-2 font-semibold text-white"
-            >
-              Close
-            </button>
+function MatchCard({
+  match,
+  user,
+  selectedMode,
+}: {
+  match: Match;
+  user: User;
+  selectedMode: GameMode;
+}) {
+  const router = useRouter();
+  const cpk = match.prizePool?.coinsPerKill ?? 0;
+  const prizePool = match.prizePool?.totalPrizePool ?? 0;
+  const type = match.matchType || "solo";
+
+  return (
+    <button
+      onClick={() =>
+        router.push(`/play/matches/${match.id}?modeId=${selectedMode.id}&modeName=${encodeURIComponent(selectedMode.name)}`)
+      }
+      className="group flex w-full flex-col rounded-xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-4 text-left transition hover:border-[#f97316]/40 hover:from-white/10 hover:to-white/5"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-white truncate">{match.title}</span>
+            <MatchTypeTag type={type} />
           </div>
+          <p className="mt-2 text-xs text-[#94A3B8]">{formatMatchDateTime(match.startsAt ?? "")}</p>
         </div>
-      )}
-    </>
+        <svg
+          className="h-5 w-5 shrink-0 text-[#94A3B8] transition group-hover:text-[#f97316]"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-[#64748B]">Entry</span>
+          <span className="font-semibold text-[#f97316]">{match.entryFee}</span>
+          <span className="text-xs text-[#94A3B8]">coins</span>
+        </div>
+        <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-[#64748B]">Prize</span>
+          <span className="font-semibold text-emerald-400">{prizePool}</span>
+          <span className="text-xs text-[#94A3B8]">coins</span>
+        </div>
+        <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-[#64748B]">CPK</span>
+          <span className="font-semibold text-amber-400">{cpk}</span>
+          <span className="text-xs text-[#94A3B8]">/kill</span>
+        </div>
+      </div>
+    </button>
   );
 }
 
