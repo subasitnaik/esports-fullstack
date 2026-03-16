@@ -105,6 +105,21 @@ let matchParticipantIdCounter = 1;
 // Display order for ongoing matches: when admin sets rank, we swap positions
 const matchParticipantOrder: Record<string, string[]> = {};
 
+// Persist admin data across Next.js hot reloads in development (for testing server)
+const globalForAdmin = globalThis as unknown as {
+  adminPermissions?: AdminPermission[];
+  adminIdCounter?: number;
+  withdrawalChargePercent?: number;
+  signupBonus?: number;
+  adminStoreUsers?: User[];
+  adminStoreCoinTransactions?: CoinTransaction[];
+  adminStoreDepositRequests?: DepositRequest[];
+  adminStoreWithdrawalRequests?: WithdrawalRequest[];
+  adminStoreTransactionIdCounter?: number;
+  adminStoreDepositRequestIdCounter?: number;
+  adminStoreWithdrawalRequestIdCounter?: number;
+};
+
 function generateUniqueUserId(): string {
   const existing = new Set(users.map((u) => u.id));
   let id: string;
@@ -114,26 +129,28 @@ function generateUniqueUserId(): string {
   return id;
 }
 
-const users: User[] = [];
+const users: User[] = globalForAdmin.adminStoreUsers ?? (globalForAdmin.adminStoreUsers = []);
+const coinTransactions: CoinTransaction[] = globalForAdmin.adminStoreCoinTransactions ?? (globalForAdmin.adminStoreCoinTransactions = []);
+const depositRequests: DepositRequest[] = globalForAdmin.adminStoreDepositRequests ?? (globalForAdmin.adminStoreDepositRequests = []);
+const withdrawalRequests: WithdrawalRequest[] = globalForAdmin.adminStoreWithdrawalRequests ?? (globalForAdmin.adminStoreWithdrawalRequests = []);
 
-const coinTransactions: CoinTransaction[] = [];
-let transactionIdCounter = 1;
-
-const depositRequests: DepositRequest[] = [];
-let depositRequestIdCounter = 1;
-
-const withdrawalRequests: WithdrawalRequest[] = [];
-let withdrawalRequestIdCounter = 1;
+function nextTxId() {
+  const v = (globalForAdmin.adminStoreTransactionIdCounter ?? 1);
+  globalForAdmin.adminStoreTransactionIdCounter = v + 1;
+  return `tx-${v}`;
+}
+function nextDrId() {
+  const v = (globalForAdmin.adminStoreDepositRequestIdCounter ?? 1);
+  globalForAdmin.adminStoreDepositRequestIdCounter = v + 1;
+  return `dr-${v}`;
+}
+function nextWrId() {
+  const v = (globalForAdmin.adminStoreWithdrawalRequestIdCounter ?? 1);
+  globalForAdmin.adminStoreWithdrawalRequestIdCounter = v + 1;
+  return `wr-${v}`;
+}
 
 let depositQrUrl: string | null = null;
-
-// Persist admin data across Next.js hot reloads in development
-const globalForAdmin = globalThis as unknown as {
-  adminPermissions?: AdminPermission[];
-  adminIdCounter?: number;
-  withdrawalChargePercent?: number;
-  signupBonus?: number;
-};
 
 const initialAdminPermissions: AdminPermission[] = [
   {
@@ -260,7 +277,7 @@ export const adminStore = {
       if (u) {
         u.coins += m.entryFee;
         coinTransactions.push({
-          id: `tx-${transactionIdCounter++}`,
+          id: nextTxId(),
           userId: p.userId,
           amount: m.entryFee,
           type: "refund",
@@ -293,22 +310,25 @@ export const adminStore = {
     globalForAdmin.signupBonus = a;
     return a;
   },
-  addUser: (email: string, displayName: string) => {
+  addUser: (email: string, displayName: string, password: string) => {
     const existing = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
     if (existing) return null;
+    if (!password || password.length < 6) return null;
     const id = generateUniqueUserId();
     const bonus = signupBonus;
-    const user: User = {
+    const passwordHash = bcrypt.hashSync(password, 10);
+    const user: User & { passwordHash?: string } = {
       id,
       email,
       displayName,
       coins: bonus,
       isBlocked: false,
+      passwordHash,
     };
     users.push(user);
     if (bonus > 0) {
       coinTransactions.push({
-        id: `tx-${transactionIdCounter++}`,
+        id: nextTxId(),
         userId: id,
         amount: bonus,
         type: "signup_bonus",
@@ -318,14 +338,20 @@ export const adminStore = {
     }
     return user;
   },
-  getUserByEmail: (email: string) =>
-    users.find((u) => u.email?.toLowerCase() === email.toLowerCase()) ?? null,
+  signInUser: (email: string, password: string) => {
+    const u = users.find((x) => x.email?.toLowerCase() === email.toLowerCase());
+    if (!u || u.isBlocked) return null;
+    const hash = (u as User & { passwordHash?: string }).passwordHash;
+    if (!hash || !bcrypt.compareSync(password, hash)) return null;
+    const { passwordHash: _, ...user } = u as User & { passwordHash?: string };
+    return user;
+  },
   addCoins: (userId: string, amount: number, description?: string) => {
     const u = users.find((x) => x.id === userId);
     if (!u) return null;
     u.coins += amount;
     coinTransactions.push({
-      id: `tx-${transactionIdCounter++}`,
+      id: nextTxId(),
       userId,
       amount,
       type: "admin_add",
@@ -335,7 +361,7 @@ export const adminStore = {
     return u;
   },
   addDepositRequest: (userId: string, amount: number, utr: string) => {
-    const id = `dr-${depositRequestIdCounter++}`;
+    const id = nextDrId();
     const req: DepositRequest = {
       id,
       userId,
@@ -352,6 +378,8 @@ export const adminStore = {
     return [...depositRequests];
   },
   getDepositRequest: (id: string) => depositRequests.find((r) => r.id === id),
+  getDepositRequestsByUser: (userId: string) =>
+    depositRequests.filter((r) => r.userId === userId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
   acceptDepositRequest: (id: string) => {
     const req = depositRequests.find((r) => r.id === id);
     if (!req || req.status !== "pending") return null;
@@ -360,7 +388,7 @@ export const adminStore = {
     if (u) {
       u.coins += req.amount;
       coinTransactions.push({
-        id: `tx-${transactionIdCounter++}`,
+        id: nextTxId(),
         userId: req.userId,
         amount: req.amount,
         type: "deposit",
@@ -376,7 +404,7 @@ export const adminStore = {
     if (!req || req.status !== "pending") return null;
     req.status = "rejected";
     coinTransactions.push({
-      id: `tx-${transactionIdCounter++}`,
+      id: nextTxId(),
       userId: req.userId,
       amount: req.amount,
       type: "deposit_failed",
@@ -393,7 +421,7 @@ export const adminStore = {
     const u = users.find((x) => x.id === req.userId);
     if (u) u.isBlocked = true;
     coinTransactions.push({
-      id: `tx-${transactionIdCounter++}`,
+      id: nextTxId(),
       userId: req.userId,
       amount: req.amount,
       type: "deposit_failed",
@@ -413,7 +441,7 @@ export const adminStore = {
   addWithdrawalRequest: (userId: string, amount: number, upiId: string) => {
     const u = users.find((x) => x.id === userId);
     if (!u || u.coins < amount) return null;
-    const id = `wr-${withdrawalRequestIdCounter++}`;
+    const id = nextWrId();
     const req: WithdrawalRequest = {
       id,
       userId,
@@ -441,7 +469,7 @@ export const adminStore = {
     req.status = "accepted";
     u.coins -= req.amount;
     coinTransactions.push({
-      id: `tx-${transactionIdCounter++}`,
+      id: nextTxId(),
       userId: req.userId,
       amount: req.amount,
       type: "withdraw",
@@ -457,7 +485,7 @@ export const adminStore = {
     req.status = "rejected";
     req.rejectNote = note;
     coinTransactions.push({
-      id: `tx-${transactionIdCounter++}`,
+      id: nextTxId(),
       userId: req.userId,
       amount: req.amount,
       type: "withdraw_failed",
@@ -540,6 +568,48 @@ export const adminStore = {
     };
     matchParticipants.push(p);
     return p;
+  },
+
+  joinMatch: (
+    matchId: string,
+    appUserId: string,
+    inGameName: string,
+    inGameUid: string,
+    teamMembers?: { inGameName: string; inGameUid: string }[]
+  ): { error?: string } | null => {
+    const m = matches.find((x) => x.id === matchId);
+    if (!m) return { error: "Match not found" };
+    if (m.status !== "upcoming") return { error: "Registration closed" };
+    if (m.registrationLocked) return { error: "Registration locked" };
+    const u = users.find((x) => x.id === appUserId);
+    if (!u) return { error: "User not found" };
+    if (u.isBlocked) return { error: "Account is blocked" };
+    if (u.coins < m.entryFee) return { error: "Insufficient coins" };
+    const existing = matchParticipants.find((p) => p.matchId === matchId && p.userId === appUserId);
+    if (existing) return { error: "Already registered" };
+    const participants = matchParticipants.filter((p) => p.matchId === matchId);
+    if (participants.length >= m.maxParticipants) return { error: "Match is full" };
+    const members = [{ inGameName, inGameUid }, ...(teamMembers ?? [])].slice(0, 4);
+    matchParticipants.push({
+      id: `mp${matchParticipantIdCounter++}`,
+      matchId,
+      userId: appUserId,
+      teamMembers: members.map((tm) => ({ ...tm, kills: 0 })),
+      joinedAt: new Date().toISOString(),
+    });
+    if (m.entryFee > 0) {
+      u.coins -= m.entryFee;
+      coinTransactions.push({
+        id: nextTxId(),
+        userId: appUserId,
+        amount: -m.entryFee,
+        type: "match_entry",
+        referenceId: matchId,
+        description: "Match entry fee",
+        createdAt: new Date().toISOString(),
+      });
+    }
+    return null;
   },
 
   getDepositQrUrl: () => depositQrUrl,

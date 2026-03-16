@@ -4,7 +4,7 @@ import { Section } from "@/components/ui";
 
 export function GetAppSection() {
   const getApp = brand.getApp;
-  const downloadUrl = getApp?.url ?? brand.download?.url ?? "#";
+  const playUrl = "/play";
   const description = brand.whyDownload?.description?.replace(
     "{appName}",
     brand.appName
@@ -14,10 +14,10 @@ export function GetAppSection() {
     <Section id="download" background="card">
       <div className="mx-auto max-w-2xl text-center font-ultimatum">
         <h2 className="text-2xl font-bold text-text sm:text-3xl">
-          {getApp?.title ?? brand.download?.ctaTitle}
+          Ready to play?
         </h2>
         <p className="mt-4 text-text-muted">
-          {getApp?.subtitle ?? brand.download?.ctaSubtitle}
+          Play in your browser — sign up, join tournaments, manage coins, and more. No app download required.
         </p>
         {description && (
           <p className="mt-2 text-sm text-text-dim">{description}</p>
@@ -31,17 +31,17 @@ export function GetAppSection() {
           ))}
         </ul>
         <Link
-          href={downloadUrl}
+          href={playUrl}
           className="mt-8 inline-block rounded-lg px-8 py-4 text-base font-bold uppercase tracking-wider text-stone-900 transition hover:opacity-95 active:scale-[0.98]"
           style={{
             background: "linear-gradient(to right, #FFC107, #FFA000)",
             boxShadow: "0 4px 14px rgba(255, 160, 0, 0.4)",
           }}
         >
-          {getApp?.buttonLabel ?? brand.download?.buttonLabel}
+          Play
         </Link>
         <p className="mt-4 text-sm text-text-dim">
-          {getApp?.platforms ?? brand.download?.platforms}
+          Play in your browser — no download required
         </p>
       </div>
     </Section>

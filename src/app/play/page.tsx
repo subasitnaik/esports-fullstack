@@ -1,0 +1,813 @@
+"use client";
+
+import { Suspense, useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+
+type User = { id: string; email: string; displayName: string; coins: number; isBlocked?: boolean };
+type Game = { id: string; name: string; imageUrl: string | null };
+type GameMode = { id: string; gameId: string; name: string; imageUrl: string | null };
+type Match = {
+  id: string;
+  gameModeId: string;
+  title: string;
+  entryFee: number;
+  roomCode: string | null;
+  roomPassword: string | null;
+  status: string;
+  matchType?: string;
+  maxParticipants?: number;
+};
+type Transaction = { id: string; amount: number; type: string; note: string | null; status?: "pending" | "successful" | "failed"; createdAt: string };
+
+const USER_KEY = "esports_play_user";
+
+function formatTxDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function getStoredUser(): User | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const s = localStorage.getItem(USER_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredUser(user: User | null) {
+  if (typeof window === "undefined") return;
+  if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+  else localStorage.removeItem(USER_KEY);
+}
+
+async function api<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...options,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+function PlayPageContent() {
+  const searchParams = useSearchParams();
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"games" | "coins" | "profile">("games");
+
+  useEffect(() => {
+    setUser(getStoredUser());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t === "coins" || t === "games" || t === "profile") setTab(t);
+    else if (t === "history") setTab("coins");
+  }, [searchParams]);
+
+  const onLoggedIn = useCallback((u: User) => {
+    setStoredUser(u);
+    setUser(u);
+  }, []);
+
+  const onLogout = useCallback(() => {
+    fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+    setStoredUser(null);
+    setUser(null);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#f97316] border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <>
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#0c0c0e]/95 px-4 py-3 backdrop-blur">
+          <Link href="/" className="flex h-10 w-10 items-center justify-center rounded-full text-[#94A3B8] transition hover:bg-white/10 hover:text-white" aria-label="Back">
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <span className="font-semibold text-white">Esports App</span>
+          <div className="w-20" />
+        </header>
+        <AuthScreen onLoggedIn={onLoggedIn} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#0c0c0e]/95 px-4 py-3 backdrop-blur">
+        <Link href="/" className="flex h-10 w-10 items-center justify-center rounded-full text-[#94A3B8] transition hover:bg-white/10 hover:text-white" aria-label="Back">
+          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </Link>
+        <span className="font-semibold text-white">Esports App</span>
+        <button
+          onClick={onLogout}
+          className="text-sm text-[#94A3B8] hover:text-white"
+          type="button"
+        >
+          Logout
+        </button>
+      </header>
+      <main className="mx-auto max-w-2xl pb-24">
+        <div className="flex gap-2 border-b border-white/10 px-4 py-3">
+          {(["games", "coins", "profile"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`rounded-full px-4 py-2 text-sm font-medium capitalize transition ${
+                tab === t
+                  ? "bg-[#f97316] text-white"
+                  : "text-[#94A3B8] hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        {tab === "games" && <GamesTab user={user} />}
+        {tab === "coins" && <CoinsTab user={user} initialSubTab={searchParams.get("tab") === "history" ? "history" : undefined} />}
+        {tab === "profile" && <ProfileTab user={user} onLogout={onLogout} />}
+      </main>
+    </>
+  );
+}
+
+export default function PlayPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-[#0c0c0e]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#f97316] border-t-transparent" />
+      </div>
+    }>
+      <PlayPageContent />
+    </Suspense>
+  );
+}
+
+function AuthScreen({ onLoggedIn }: { onLoggedIn: (u: User) => void }) {
+  const [isSignUp, setIsSignUp] = useState(true);
+  const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setError("Email is required");
+      return;
+    }
+    if (isSignUp) {
+      if (!password || password.length < 6) {
+        setError("Password must be at least 6 characters");
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError("Passwords do not match");
+        return;
+      }
+    } else {
+      if (!password) {
+        setError("Password is required");
+        return;
+      }
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      if (isSignUp) {
+        const name = displayName.trim() || trimmed.split("@")[0] || "User";
+        const { user } = await api<{ user: User }>("/api/auth/signup", {
+          method: "POST",
+          body: JSON.stringify({ email: trimmed, displayName: name, password }),
+        });
+        onLoggedIn(user);
+      } else {
+        const { user } = await api<{ user: User }>("/api/auth/signin", {
+          method: "POST",
+          body: JSON.stringify({ email: trimmed, password }),
+        });
+        onLoggedIn(user);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Request failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-sm px-6 py-12">
+      <h1 className="text-2xl font-bold text-white">
+        {isSignUp ? "Create Account" : "Sign In"}
+      </h1>
+      <p className="mt-2 text-sm text-[#94A3B8]">
+        {isSignUp ? "Enter your email and set a password" : "Enter your email and password"}
+      </p>
+      <div className="mt-6 flex gap-3">
+        <button
+          onClick={() => {
+            setIsSignUp(true);
+            setError(null);
+          }}
+          className={`flex-1 rounded-full py-2 text-sm font-medium ${
+            isSignUp ? "bg-[#f97316] text-white" : "bg-white/5 text-[#94A3B8]"
+          }`}
+        >
+          Sign Up
+        </button>
+        <button
+          onClick={() => {
+            setIsSignUp(false);
+            setError(null);
+          }}
+          className={`flex-1 rounded-full py-2 text-sm font-medium ${
+            !isSignUp ? "bg-[#f97316] text-white" : "bg-white/5 text-[#94A3B8]"
+          }`}
+        >
+          Sign In
+        </button>
+      </div>
+      <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setError(null);
+          }}
+          placeholder="Email"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-[#64748B] outline-none focus:border-[#f97316]"
+        />
+        {isSignUp && (
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Display Name (optional)"
+            className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-[#64748B] outline-none focus:border-[#f97316]"
+          />
+        )}
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            setError(null);
+          }}
+          placeholder={isSignUp ? "Password (min 6 characters)" : "Password"}
+          className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-[#64748B] outline-none focus:border-[#f97316]"
+        />
+        {isSignUp && (
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => {
+              setConfirmPassword(e.target.value);
+              setError(null);
+            }}
+            placeholder="Confirm Password"
+            className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-[#64748B] outline-none focus:border-[#f97316]"
+          />
+        )}
+        {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          className="mt-6 w-full rounded-xl bg-[#f97316] py-3 font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+        >
+          {loading ? "Please wait..." : isSignUp ? "Sign Up" : "Sign In"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GamesTab({ user }: { user: User }) {
+  const [games, setGames] = useState<Game[]>([]);
+  const [modes, setModes] = useState<GameMode[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [selectedGame, setSelectedGame] = useState<Game | null>(null);
+  const [selectedMode, setSelectedMode] = useState<GameMode | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api<Game[]>("/api/games")
+      .then(setGames)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedGame) {
+      setModes([]);
+      setSelectedMode(null);
+      setMatches([]);
+      return;
+    }
+    api<GameMode[]>(`/api/modes?gameId=${selectedGame.id}`)
+      .then(setModes)
+      .catch(() => setModes([]));
+    setSelectedMode(null);
+    setMatches([]);
+  }, [selectedGame]);
+
+  useEffect(() => {
+    if (!selectedMode) {
+      setMatches([]);
+      return;
+    }
+    api<Match[]>(`/api/matches?modeId=${selectedMode.id}`)
+      .then(setMatches)
+      .catch(() => setMatches([]));
+  }, [selectedMode]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#f97316] border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (selectedMode) {
+    return (
+      <div className="p-4">
+        <button
+          onClick={() => setSelectedMode(null)}
+          className="mb-4 text-sm text-[#f97316] hover:underline"
+        >
+          ← Back to Modes
+        </button>
+        <h2 className="text-lg font-semibold text-white">Matches</h2>
+        <div className="mt-4 space-y-2">
+          {matches.map((m) => (
+            <MatchCard key={m.id} match={m} user={user} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (selectedGame) {
+    return (
+      <div className="p-4">
+        <button
+          onClick={() => setSelectedGame(null)}
+          className="mb-4 text-sm text-[#f97316] hover:underline"
+        >
+          ← Back to Games
+        </button>
+        <h2 className="text-lg font-semibold text-white">Select Mode</h2>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+          {modes.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setSelectedMode(m)}
+              className="group relative w-full overflow-hidden rounded-xl text-left transition hover:opacity-95"
+            >
+              <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-white/5">
+                {m.imageUrl ? (
+                  <img
+                    src={m.imageUrl}
+                    alt={m.name}
+                    className="h-full w-full object-cover transition group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-white/10 to-white/5">
+                    <span className="text-2xl text-white/40">🎮</span>
+                  </div>
+                )}
+                <div className="absolute inset-0 rounded-xl bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-8">
+                  <span className="line-clamp-2 text-sm font-semibold text-white drop-shadow-lg">{m.name}</span>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4">
+      <h2 className="text-lg font-semibold text-white">Select Game</h2>
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+        {games.map((g) => (
+          <button
+            key={g.id}
+            onClick={() => setSelectedGame(g)}
+            className="group relative w-full overflow-hidden rounded-xl text-left transition hover:opacity-95"
+          >
+            <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-white/5">
+              {g.imageUrl ? (
+                <img
+                  src={g.imageUrl}
+                  alt={g.name}
+                  className="h-full w-full object-cover transition group-hover:scale-105"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-white/10 to-white/5">
+                  <span className="text-2xl text-white/40">🎮</span>
+                </div>
+              )}
+              <div className="absolute inset-0 rounded-xl bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+              <div className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-8">
+                <span className="line-clamp-2 text-sm font-semibold text-white drop-shadow-lg">{g.name}</span>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MatchCard({ match, user }: { match: Match; user: User }) {
+  const [showJoin, setShowJoin] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+  const [inGameName, setInGameName] = useState("");
+  const [inGameUid, setInGameUid] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleJoin = async () => {
+    if (!inGameName.trim() || !inGameUid.trim()) {
+      setError("Fill in-game name and UID");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await api(`/api/matches/${match.id}/join`, {
+        method: "POST",
+        body: JSON.stringify({
+          inGameName: inGameName.trim(),
+          inGameUid: inGameUid.trim(),
+        }),
+      });
+      setShowJoin(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to join");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const canJoin = match.status === "upcoming" && user.coins >= match.entryFee;
+
+  return (
+    <>
+      <button
+        onClick={() => (canJoin ? setShowJoin(true) : setShowDetail(true))}
+        className="flex w-full flex-col rounded-xl border border-white/10 bg-white/5 p-4 text-left transition hover:bg-white/10"
+      >
+        <span className="font-medium text-white">{match.title}</span>
+        <span className="mt-1 text-sm text-[#94A3B8]">
+          {match.entryFee} coins • {match.matchType || "solo"} • {match.status}
+        </span>
+      </button>
+
+      {showJoin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="max-w-md rounded-2xl border border-white/10 bg-[#0c0c0e] p-6">
+            <h3 className="text-lg font-semibold text-white">Join: {match.title}</h3>
+            <p className="mt-2 text-sm text-[#94A3B8]">Entry fee: {match.entryFee} coins</p>
+            {user.coins < match.entryFee && (
+              <p className="mt-2 text-sm text-red-400">Insufficient coins. You have {user.coins}</p>
+            )}
+            {user.coins >= match.entryFee && (
+              <>
+                <input
+                  value={inGameName}
+                  onChange={(e) => setInGameName(e.target.value)}
+                  placeholder="In-game Name"
+                  className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-[#64748B]"
+                />
+                <input
+                  value={inGameUid}
+                  onChange={(e) => setInGameUid(e.target.value)}
+                  placeholder="In-game UID"
+                  className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-[#64748B]"
+                />
+                {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+              </>
+            )}
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowJoin(false)}
+                className="flex-1 rounded-xl border border-white/20 py-2 text-[#94A3B8] hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              {user.coins >= match.entryFee && (
+                <button
+                  onClick={handleJoin}
+                  disabled={loading}
+                  className="flex-1 rounded-xl bg-[#f97316] py-2 font-semibold text-white disabled:opacity-50"
+                >
+                  {loading ? "Joining..." : "Join"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="max-w-md rounded-2xl border border-white/10 bg-[#0c0c0e] p-6">
+            <h3 className="text-lg font-semibold text-white">{match.title}</h3>
+            <p className="mt-2 text-sm text-[#94A3B8]">Status: {match.status}</p>
+            <p className="text-sm text-[#94A3B8]">Entry: {match.entryFee} coins</p>
+            {match.status === "ongoing" && match.roomCode && match.roomPassword && (
+              <div className="mt-4">
+                <p className="font-semibold text-[#f97316]">Room Code: {match.roomCode}</p>
+                <p className="font-semibold text-[#f97316]">Password: {match.roomPassword}</p>
+              </div>
+            )}
+            <button
+              onClick={() => setShowDetail(false)}
+              className="mt-6 w-full rounded-xl bg-[#f97316] py-2 font-semibold text-white"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function CoinsTab({ user, initialSubTab }: { user: User; initialSubTab?: "deposit" | "withdraw" | "history" }) {
+  const router = useRouter();
+  const [subTab, setSubTab] = useState<"deposit" | "withdraw" | "history">(initialSubTab ?? "deposit");
+
+  useEffect(() => {
+    if (initialSubTab) setSubTab(initialSubTab);
+  }, [initialSubTab]);
+  const [withdrawalCharge, setWithdrawalCharge] = useState(0);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [depositAmount, setDepositAmount] = useState("");
+  const [amount, setAmount] = useState("");
+  const [upiId, setUpiId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      api<{ chargePercent?: number }>("/api/withdrawal-charge").then((r) => r.chargePercent ?? 0),
+      api<Transaction[]>(`/api/users/${user.id}/transactions`).then((r) => r ?? []),
+    ]).then(([charge, tx]) => {
+      setWithdrawalCharge(charge);
+      setTransactions(tx);
+    }).catch(() => {});
+  }, [user.id]);
+
+  const depositAmountNum = parseInt(depositAmount, 10);
+  const canProceedToPayment = !isNaN(depositAmountNum) && depositAmountNum > 0;
+
+  const handleProceedToPayment = () => {
+    if (!canProceedToPayment) return;
+    router.push(`/play/deposit?amount=${depositAmountNum}`);
+  };
+
+  const handleWithdraw = async () => {
+    const amt = parseInt(amount, 10);
+    if (!amt || amt <= 0 || !upiId.trim()) {
+      setError("Enter valid amount and UPI ID");
+      return;
+    }
+    if (user.coins < amt) {
+      setError("Insufficient balance");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await api("/api/withdrawals", {
+        method: "POST",
+        body: JSON.stringify({ amount: amt, upiId: upiId.trim() }),
+      });
+      router.push("/play?tab=history");
+      return;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-4">
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="flex justify-between">
+          <span className="text-[#94A3B8]">Your Balance</span>
+          <span className="font-bold text-[#f97316]">{user.coins} coins</span>
+        </div>
+      </div>
+      <div className="mt-4 flex gap-2">
+        {(["deposit", "withdraw", "history"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setSubTab(t)}
+            className={`rounded-full px-4 py-2 text-sm capitalize ${
+              subTab === t ? "bg-[#f97316] text-white" : "bg-white/5 text-[#94A3B8]"
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+      <div className="mt-6">
+        {subTab === "deposit" && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <h3 className="font-medium text-white">Add Coins</h3>
+            <p className="mt-2 text-sm text-[#94A3B8]">Enter the amount of coins you want to deposit</p>
+            <input
+              value={depositAmount}
+              onChange={(e) => setDepositAmount(e.target.value)}
+              placeholder="Amount (coins)"
+              type="number"
+              min={1}
+              className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-[#64748B]"
+            />
+            {canProceedToPayment && (
+              <button
+                onClick={handleProceedToPayment}
+                className="mt-4 w-full rounded-xl bg-[#f97316] py-3 font-semibold text-white"
+              >
+                Proceed to payment page
+              </button>
+            )}
+          </div>
+        )}
+        {subTab === "withdraw" && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <h3 className="font-medium text-white">Withdraw Coins</h3>
+            {withdrawalCharge > 0 && <p className="mt-2 text-sm text-[#94A3B8]">Charge: {withdrawalCharge}%</p>}
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Amount (coins)"
+              className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-[#64748B]"
+            />
+            <input
+              value={upiId}
+              onChange={(e) => setUpiId(e.target.value)}
+              placeholder="UPI ID"
+              className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-[#64748B]"
+            />
+            {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+            {success && <p className="mt-2 text-sm text-emerald-400">Request submitted! Wait for admin approval.</p>}
+            <button
+              onClick={handleWithdraw}
+              disabled={loading}
+              className="mt-4 w-full rounded-xl bg-[#f97316] py-3 font-semibold text-white disabled:opacity-50"
+            >
+              {loading ? "Submitting..." : "Submit"}
+            </button>
+          </div>
+        )}
+        {subTab === "history" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">Transaction History</h3>
+            </div>
+            <div className="space-y-3">
+              {transactions.map((tx) => (
+                <div
+                  key={tx.id}
+                  className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4 transition hover:border-white/15 hover:bg-white/5"
+                >
+                  <div
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                      tx.amount >= 0 ? "bg-emerald-500/15" : "bg-red-500/15"
+                    }`}
+                  >
+                    {tx.amount >= 0 ? (
+                      <svg className="h-5 w-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                      </svg>
+                    ) : (
+                      <svg className="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-white">{tx.note || tx.type}</p>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      {tx.status && (
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                            tx.status === "pending"
+                              ? "bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/30"
+                              : tx.status === "successful"
+                                ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30"
+                                : tx.status === "failed"
+                                  ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/30"
+                                  : ""
+                          }`}
+                        >
+                          {tx.status === "pending" && "Pending"}
+                          {tx.status === "successful" && "Successful"}
+                          {tx.status === "failed" && "Rejected"}
+                        </span>
+                      )}
+                      <span className="text-xs text-[#64748B]">{formatTxDate(tx.createdAt)}</span>
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span
+                      className={`text-lg font-semibold tabular-nums ${
+                        tx.amount >= 0 ? "text-emerald-400" : "text-red-400"
+                      }`}
+                    >
+                      {tx.amount >= 0 ? "+" : ""}{tx.amount}
+                    </span>
+                    <p className="text-xs text-[#94A3B8]">coins</p>
+                  </div>
+                </div>
+              ))}
+              {transactions.length === 0 && (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.02] py-16 px-6">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5">
+                    <svg className="h-8 w-8 text-[#94A3B8]/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </div>
+                  <p className="mt-4 text-center font-medium text-white">No transactions yet</p>
+                  <p className="mt-1 text-center text-sm text-[#94A3B8]">Your deposit and withdrawal history will appear here</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProfileTab({ user, onLogout }: { user: User; onLogout: () => void }) {
+  return (
+    <div className="p-4">
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <h3 className="font-medium text-white">Profile</h3>
+        <div className="mt-4 space-y-3">
+          <div className="flex justify-between">
+            <span className="text-[#94A3B8]">User ID</span>
+            <span className="font-medium text-white">{user.id}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[#94A3B8]">Email</span>
+            <span className="text-white">{user.email}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[#94A3B8]">Display Name</span>
+            <span className="text-white">{user.displayName}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[#94A3B8]">Coins</span>
+            <span className="font-bold text-[#f97316]">{user.coins}</span>
+          </div>
+        </div>
+      </div>
+      <button
+        onClick={onLogout}
+        className="mt-6 w-full rounded-xl bg-[#f97316] py-3 font-semibold text-white"
+      >
+        Logout
+      </button>
+    </div>
+  );
+}

@@ -33,14 +33,21 @@ export function getStore() {
         prizePool: { coinsPerKill: number; totalPrizePool?: number; rankRewards: { fromRank: number; toRank: number; coins: number }[] }
       ) => db.addMatch(gameModeId, title, entryFee, maxParticipants, scheduledAt, matchType, prizePool),
       getMatch: (id: string) => db.getMatch(id),
+      joinMatch: (
+        matchId: string,
+        appUserId: string,
+        inGameName: string,
+        inGameUid: string,
+        teamMembers?: { inGameName: string; inGameUid: string }[]
+      ) => db.joinMatch(matchId, appUserId, inGameName, inGameUid, teamMembers),
       updateMatchRoomInfo: (id: string, roomCode: string, roomPassword: string) => db.updateMatchRoomInfo(id, roomCode, roomPassword),
       startMatch: (id: string, roomCode?: string, roomPassword?: string) => db.startMatch(id, roomCode, roomPassword),
       cancelMatch: (id: string) => db.cancelMatch(id),
       deleteMatch: (id: string) => db.deleteMatch(id),
       renameMatch: (id: string, title: string) => db.renameMatch(id, title),
       users: () => db.users(),
-      addUser: (email: string, displayName: string) => db.addUser(email, displayName),
-      getUserByEmail: (email: string) => db.getUserByEmail(email),
+      addUser: (email: string, displayName: string, password: string) => db.addUser(email, displayName, password),
+      signInUser: (email: string, password: string) => db.signInUser(email, password),
       getUser: (id: string) => db.getUser(id),
       addCoins: (userId: string, amount: number, desc?: string) => db.addCoins(userId, amount, desc),
       blockUser: (userId: string) => db.blockUser(userId),
@@ -48,6 +55,7 @@ export function getStore() {
       deleteUser: (userId: string) => db.deleteUser(userId),
       getDepositRequests: (status?: "pending" | "accepted" | "rejected") => db.getDepositRequests(status),
       getDepositRequest: (id: string) => db.getDepositRequest(id),
+      getDepositRequestsByUser: (userId: string) => db.getDepositRequestsByUser(userId),
       addDepositRequest: (userId: string, amount: number, utr: string) => db.addDepositRequest(userId, amount, utr),
       acceptDepositRequest: (id: string) => db.acceptDepositRequest(id),
       rejectDepositRequest: (id: string) => db.rejectDepositRequest(id),
@@ -96,6 +104,13 @@ export function getStore() {
       prizePool: { coinsPerKill: number; totalPrizePool?: number; rankRewards: { fromRank: number; toRank: number; coins: number }[] }
     ) => Promise.resolve(adminStore.addMatch(gameModeId, title, entryFee, maxParticipants, scheduledAt, matchType as "solo" | "duo" | "squad", prizePool)),
     getMatch: (id: string) => Promise.resolve(adminStore.getMatch(id)).then((m) => (m ? { ...m, participants: adminStore.getParticipantsForMatch(id) } : null)),
+    joinMatch: (
+      matchId: string,
+      appUserId: string,
+      inGameName: string,
+      inGameUid: string,
+      teamMembers?: { inGameName: string; inGameUid: string }[]
+    ) => Promise.resolve(adminStore.joinMatch(matchId, appUserId, inGameName, inGameUid, teamMembers)),
     updateMatchRoomInfo: (id: string, roomCode: string, roomPassword: string) =>
       Promise.resolve(adminStore.updateMatchRoomInfo(id, roomCode, roomPassword)).then((m) => (m ? { ...m, participants: adminStore.getParticipantsForMatch(id) } : null)),
     startMatch: (id: string, roomCode?: string, roomPassword?: string) =>
@@ -109,8 +124,8 @@ export function getStore() {
     deleteAdmin: (id: string) => Promise.resolve(adminStore.deleteAdmin(id)),
     updateAdminPassword: (id: string, newPassword: string) => Promise.resolve(adminStore.updateAdminPassword(id, newPassword)),
     users: () => Promise.resolve(adminStore.users()),
-    addUser: (email: string, displayName: string) => Promise.resolve(adminStore.addUser(email, displayName)),
-    getUserByEmail: (email: string) => Promise.resolve(adminStore.getUserByEmail(email)),
+    addUser: (email: string, displayName: string, password: string) => Promise.resolve(adminStore.addUser(email, displayName, password)),
+    signInUser: (email: string, password: string) => Promise.resolve(adminStore.signInUser(email, password)),
     getUser: (id: string) => Promise.resolve(adminStore.getUser(id)),
     addCoins: (userId: string, amount: number, desc?: string) => Promise.resolve(adminStore.addCoins(userId, amount, desc)),
     blockUser: (userId: string) => Promise.resolve(adminStore.blockUser(userId)),
@@ -118,6 +133,7 @@ export function getStore() {
     deleteUser: (userId: string) => Promise.resolve(adminStore.deleteUser(userId)),
     getDepositRequests: (status?: "pending" | "accepted" | "rejected") => Promise.resolve(adminStore.getDepositRequests(status)),
     getDepositRequest: (id: string) => Promise.resolve(adminStore.getDepositRequest(id)),
+    getDepositRequestsByUser: (userId: string) => Promise.resolve(adminStore.getDepositRequestsByUser(userId)),
     addDepositRequest: (userId: string, amount: number, utr: string) => Promise.resolve(adminStore.addDepositRequest(userId, amount, utr)),
     acceptDepositRequest: (id: string) => Promise.resolve(adminStore.acceptDepositRequest(id)),
     rejectDepositRequest: (id: string) => Promise.resolve(adminStore.rejectDepositRequest(id)),

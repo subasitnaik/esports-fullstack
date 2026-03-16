@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { getStore } from "@/lib/store";
+import { getAppUserId } from "@/lib/app-auth";
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ userId: string }> }
-) {
-  const { userId } = await params;
+export async function GET(_request: Request) {
+  const userId = await getAppUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const store = getStore();
-  const [transactions, withdrawals] = await Promise.all([
+  const [transactions, withdrawals, depositReqs] = await Promise.all([
     store.transactions(userId),
     store.getWithdrawalRequestsByUser(userId),
+    store.getDepositRequestsByUser(userId),
   ]);
 
   const txItems = transactions.map((t) => {
@@ -50,14 +51,25 @@ export async function GET(
     .filter((w) => w.status === "pending")
     .map((w) => ({
       id: w.id,
-      amount: w.amount,
+      amount: -w.amount,
       type: "debit" as const,
       note: "Withdraw",
       status: "pending" as const,
       createdAt: w.createdAt,
     }));
 
-  const merged = [...txItems, ...pendingWithdrawals].sort(
+  const pendingDeposits = depositReqs
+    .filter((d) => d.status === "pending")
+    .map((d) => ({
+      id: d.id,
+      amount: d.amount,
+      type: "credit" as const,
+      note: "Deposit",
+      status: "pending" as const,
+      createdAt: d.createdAt,
+    }));
+
+  const merged = [...txItems, ...pendingWithdrawals, ...pendingDeposits].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
   return NextResponse.json(merged);

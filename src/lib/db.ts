@@ -171,9 +171,10 @@ export const db = {
     return (data ?? []).map(toUser);
   },
 
-  async addUser(email: string, displayName: string): Promise<DbUser | null> {
+  async addUser(email: string, displayName: string, password: string): Promise<DbUser | null> {
     const supabase = getSupabase();
     if (!supabase) return null;
+    if (!password || password.length < 6) return null;
     const { data: existing } = await supabase.from("app_users").select("id").ilike("email", email).single();
     if (existing) return null;
 
@@ -188,9 +189,11 @@ export const db = {
       id = String(Math.floor(10000 + Math.random() * 90000));
     }
 
+    const passwordHash = await bcrypt.hash(password, 10);
+
     const { data: user, error } = await supabase
       .from("app_users")
-      .insert({ id, email, display_name: displayName, coins: Math.max(0, bonus) })
+      .insert({ id, email, display_name: displayName, coins: Math.max(0, bonus), password_hash: passwordHash })
       .select()
       .single();
     if (error) return null;
@@ -206,11 +209,18 @@ export const db = {
     return toUser(user);
   },
 
-  async getUserByEmail(email: string): Promise<DbUser | null> {
+  async signInUser(email: string, password: string): Promise<DbUser | null> {
     const supabase = getSupabase();
     if (!supabase) return null;
     const { data } = await supabase.from("app_users").select("*").ilike("email", email).single();
-    return data ? toUser(data) : null;
+    if (!data) return null;
+    const u = data as { password_hash?: string | null; is_blocked?: boolean };
+    if (u.is_blocked) return null;
+    const hash = u.password_hash;
+    if (!hash) return null;
+    const ok = await bcrypt.compare(password, hash);
+    if (!ok) return null;
+    return toUser(data);
   },
 
   async getUser(id: string): Promise<DbUser | null> {
@@ -270,6 +280,17 @@ export const db = {
     if (!supabase) return null;
     const { data } = await supabase.from("app_deposit_requests").select("*").eq("id", id).single();
     return data ? toDepositRequest(data) : null;
+  },
+
+  async getDepositRequestsByUser(userId: string): Promise<DbDepositRequest[]> {
+    const supabase = getSupabase();
+    if (!supabase) return [];
+    const { data } = await supabase
+      .from("app_deposit_requests")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+    return (data ?? []).map(toDepositRequest);
   },
 
   async addDepositRequest(userId: string, amount: number, utr: string): Promise<DbDepositRequest | null> {
@@ -589,15 +610,88 @@ export const db = {
       .select("id, match_id, user_id, in_game_name, in_game_uid, kills, squad_rank, joined_at")
       .eq("match_id", id)
       .order("joined_at");
-    const participants = (parts ?? []).map((p) => ({
-      id: p.id,
-      matchId: p.match_id,
-      userId: p.user_id,
-      teamMembers: [{ inGameName: p.in_game_name, inGameUid: p.in_game_uid, kills: p.kills ?? 0 }],
-      joinedAt: p.joined_at,
-      rank: p.squad_rank ?? undefined,
-    }));
+    const { data: appParts } = await supabase
+      .from("app_match_participants")
+      .select("id, match_id, app_user_id, in_game_name, in_game_uid, joined_at")
+      .eq("match_id", id)
+      .order("joined_at");
+    const participants = [
+      ...(parts ?? []).map((p) => ({
+        id: p.id,
+        matchId: p.match_id,
+        userId: p.user_id,
+        teamMembers: [{ inGameName: p.in_game_name, inGameUid: p.in_game_uid, kills: p.kills ?? 0 }],
+        joinedAt: p.joined_at,
+        rank: p.squad_rank ?? undefined,
+      })),
+      ...(appParts ?? []).map((p) => ({
+        id: p.id,
+        matchId: p.match_id,
+        userId: p.app_user_id,
+        teamMembers: [{ inGameName: p.in_game_name, inGameUid: p.in_game_uid, kills: 0 }],
+        joinedAt: p.joined_at,
+        rank: undefined as number | undefined,
+      })),
+    ];
     return { ...toMatch(matchRow), participants };
+  },
+
+  async joinMatch(
+    matchId: string,
+    appUserId: string,
+    inGameName: string,
+    inGameUid: string,
+    teamMembers?: { inGameName: string; inGameUid: string }[]
+  ): Promise<{ error?: string } | null> {
+    const supabase = getSupabase();
+    if (!supabase) return { error: "Database not configured" };
+    const { data: match } = await supabase.from("matches").select("*").eq("id", matchId).single();
+    if (!match) return { error: "Match not found" };
+    if (match.status !== "upcoming") return { error: "Registration closed" };
+    if (match.registration_locked) return { error: "Registration locked" };
+    const { data: user } = await supabase.from("app_users").select("coins, is_blocked").eq("id", appUserId).single();
+    if (!user) return { error: "User not found" };
+    if (user.is_blocked) return { error: "Account is blocked" };
+    const entryFee = match.entry_fee ?? 0;
+    if (user.coins < entryFee) return { error: "Insufficient coins" };
+    const { data: existing } = await supabase
+      .from("app_match_participants")
+      .select("id")
+      .eq("match_id", matchId)
+      .eq("app_user_id", appUserId)
+      .single();
+    if (existing) return { error: "Already registered" };
+    const { count: appCount } = await supabase.from("app_match_participants").select("id", { count: "exact", head: true }).eq("match_id", matchId);
+    const { count: authCount } = await supabase.from("match_participants").select("id", { count: "exact", head: true }).eq("match_id", matchId);
+    const total = (appCount ?? 0) + (authCount ?? 0);
+    if (total >= (match.max_participants ?? 100)) return { error: "Match is full" };
+    const t2 = teamMembers?.[0];
+    const t3 = teamMembers?.[1];
+    const t4 = teamMembers?.[2];
+    const { error: insertErr } = await supabase.from("app_match_participants").insert({
+      match_id: matchId,
+      app_user_id: appUserId,
+      in_game_name: inGameName,
+      in_game_uid: inGameUid,
+      participant_2_name: t2?.inGameName ?? null,
+      participant_2_uid: t2?.inGameUid ?? null,
+      participant_3_name: t3?.inGameName ?? null,
+      participant_3_uid: t3?.inGameUid ?? null,
+      participant_4_name: t4?.inGameName ?? null,
+      participant_4_uid: t4?.inGameUid ?? null,
+    });
+    if (insertErr) return { error: insertErr.message };
+    if (entryFee > 0) {
+      await supabase.from("app_users").update({ coins: user.coins - entryFee }).eq("id", appUserId);
+      await supabase.from("app_coin_transactions").insert({
+        user_id: appUserId,
+        amount: -entryFee,
+        type: "match_entry",
+        reference_id: matchId,
+        description: "Match entry fee",
+      });
+    }
+    return null;
   },
 
   async updateMatchRoomInfo(id: string, roomCode: string, roomPassword: string): Promise<DbMatch | null> {

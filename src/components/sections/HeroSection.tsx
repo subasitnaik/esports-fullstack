@@ -11,7 +11,7 @@ const VIGNETTE_LEFT =
   "linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 10%, rgba(0,0,0,0.3) 35%, transparent 60%)";
 
 export function HeroSection() {
-  const downloadUrl = brand.getApp?.url ?? brand.download?.url ?? "#";
+  const playUrl = "/play";
   const hero = brand.hero;
 
   const [imgError, setImgError] = useState(false);
@@ -77,7 +77,7 @@ export function HeroSection() {
                 className="text-sm text-white/90"
                 style={{ textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}
               >
-                Downloads
+                Players
               </div>
             </div>
             <div className="h-10 w-px shrink-0 bg-white/50" aria-hidden />
@@ -98,14 +98,14 @@ export function HeroSection() {
           </div>
         </div>
         <Link
-          href={downloadUrl}
+          href={playUrl}
           className="mt-auto block w-full rounded-lg py-4 text-center text-base font-bold uppercase tracking-wider text-stone-900 transition hover:opacity-95 active:scale-[0.98] font-ultimatum"
           style={{
             background: "linear-gradient(to right, #FFC107, #FFA000)",
             boxShadow: "0 4px 14px rgba(255, 160, 0, 0.4)",
           }}
         >
-          DOWNLOAD APK
+          PLAY
         </Link>
       </div>
     </section>

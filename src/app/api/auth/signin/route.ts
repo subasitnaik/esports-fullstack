@@ -1,21 +1,25 @@
 import { NextResponse } from "next/server";
 import { getStore } from "@/lib/store";
+import { createAppSessionCookie } from "@/lib/app-auth";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email } = body;
+    const { email, password } = body;
     if (!email || typeof email !== "string") {
       return NextResponse.json({ error: "Email required" }, { status: 400 });
     }
-    const user = await getStore().getUserByEmail(email.trim());
+    if (!password || typeof password !== "string") {
+      return NextResponse.json({ error: "Password required" }, { status: 400 });
+    }
+    const user = await getStore().signInUser(email.trim(), password);
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
     }
-    if (user.isBlocked) {
-      return NextResponse.json({ error: "Account is blocked" }, { status: 403 });
-    }
-    return NextResponse.json({ user });
+    const { name, value, options } = createAppSessionCookie(user.id);
+    const res = NextResponse.json({ user });
+    res.cookies.set(name, value, options);
+    return res;
   } catch {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
