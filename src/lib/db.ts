@@ -296,6 +296,13 @@ export const db = {
   async addDepositRequest(userId: string, amount: number, utr: string): Promise<DbDepositRequest | null> {
     const supabase = getSupabase();
     if (!supabase) return null;
+    const { data: existing } = await supabase
+      .from("app_deposit_requests")
+      .select("id")
+      .eq("utr", utr.trim())
+      .limit(1)
+      .maybeSingle();
+    if (existing) return null;
     const { data, error } = await supabase
       .from("app_deposit_requests")
       .insert({ user_id: userId, amount, utr, status: "pending" })
@@ -402,12 +409,16 @@ export const db = {
     const { data: user } = await supabase.from("app_users").select("coins").eq("id", userId).single();
     if (!user || user.coins < amount) return null;
     const charge = await db.getWithdrawalCharge();
+    await supabase.from("app_users").update({ coins: user.coins - amount }).eq("id", userId);
     const { data, error } = await supabase
       .from("app_withdrawal_requests")
       .insert({ user_id: userId, amount, upi_id: upiId, status: "pending", charge_percent: charge })
       .select()
       .single();
-    if (error) return null;
+    if (error) {
+      await supabase.from("app_users").update({ coins: user.coins }).eq("id", userId);
+      return null;
+    }
     return toWithdrawalRequest(data);
   },
 
@@ -416,13 +427,10 @@ export const db = {
     if (!supabase) return null;
     const { data: req } = await supabase.from("app_withdrawal_requests").select("*").eq("id", id).eq("status", "pending").single();
     if (!req) return null;
-    const { data: user } = await supabase.from("app_users").select("coins").eq("id", req.user_id).single();
-    if (!user || user.coins < req.amount) return null;
     await supabase.from("app_withdrawal_requests").update({ status: "accepted" }).eq("id", id);
-    await supabase.from("app_users").update({ coins: user.coins - req.amount }).eq("id", req.user_id);
     await supabase.from("app_coin_transactions").insert({
       user_id: req.user_id,
-      amount: req.amount,
+      amount: -req.amount,
       type: "withdraw",
       description: "Withdraw",
       reference_text: req.upi_id,
@@ -435,12 +443,16 @@ export const db = {
     if (!supabase) return null;
     const { data: req } = await supabase.from("app_withdrawal_requests").select("*").eq("id", id).eq("status", "pending").single();
     if (!req) return null;
+    const { data: user } = await supabase.from("app_users").select("coins").eq("id", req.user_id).single();
+    if (user) {
+      await supabase.from("app_users").update({ coins: user.coins + req.amount }).eq("id", req.user_id);
+    }
     await supabase.from("app_withdrawal_requests").update({ status: "rejected", reject_note: note }).eq("id", id);
     await supabase.from("app_coin_transactions").insert({
       user_id: req.user_id,
       amount: req.amount,
-      type: "withdraw_failed",
-      description: note || "Withdrawal rejected",
+      type: "refund",
+      description: "Withdrawal rejected - refunded",
       reference_text: req.upi_id,
     });
     return db.getWithdrawalRequest(id);

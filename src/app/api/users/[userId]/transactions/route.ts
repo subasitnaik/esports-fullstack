@@ -16,7 +16,7 @@ export async function GET(_request: Request) {
   const txItems = transactions.map((t) => {
     const isCredit = t.type === "admin_add" || t.type === "refund" || t.type === "deposit" || t.type === "signup_bonus";
     const isWithdraw = t.type === "withdraw" || t.type === "withdraw_failed";
-    let status: "pending" | "successful" | "failed" | undefined;
+    let status: "pending" | "successful" | "failed" | "refunded" | undefined;
     let note = t.description ?? t.type;
     if (t.type === "deposit") {
       status = "successful";
@@ -24,9 +24,12 @@ export async function GET(_request: Request) {
     } else if (t.type === "withdraw") {
       status = "successful";
       note = "Withdraw";
+    } else if (t.type === "refund" && (t.description?.includes("Withdrawal") || t.description?.includes("refunded"))) {
+      status = "refunded";
+      note = "Withdrawal refunded";
     } else if (t.type === "withdraw_failed") {
-      status = "failed";
-      note = t.description ?? "Withdrawal rejected";
+      status = "refunded";
+      note = "Withdrawal refunded";
     } else if (t.type === "deposit_failed") {
       status = "failed";
       note = t.description ?? "Deposit rejected";

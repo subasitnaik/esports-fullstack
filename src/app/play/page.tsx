@@ -18,7 +18,7 @@ type Match = {
   matchType?: string;
   maxParticipants?: number;
 };
-type Transaction = { id: string; amount: number; type: string; note: string | null; status?: "pending" | "successful" | "failed"; createdAt: string };
+type Transaction = { id: string; amount: number; type: string; note: string | null; status?: "pending" | "successful" | "failed" | "refunded"; createdAt: string };
 
 const USER_KEY = "esports_play_user";
 
@@ -64,6 +64,7 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 function PlayPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,6 +96,16 @@ function PlayPageContent() {
     if (t === "coins" || t === "games" || t === "profile") setTab(t);
     else if (t === "history") setTab("coins");
   }, [searchParams]);
+
+  const [globalToast, setGlobalToast] = useState<string | null>(null);
+  useEffect(() => {
+    const toastParam = searchParams.get("toast");
+    if (toastParam === "deposit_success") {
+      setGlobalToast("Deposit request submitted successfully");
+      setTimeout(() => setGlobalToast(null), 3000);
+      router.replace("/play?tab=history", { scroll: false });
+    }
+  }, [searchParams, router]);
 
   const onLoggedIn = useCallback((u: User) => {
     setStoredUser(u);
@@ -134,6 +145,11 @@ function PlayPageContent() {
 
   return (
     <>
+      {globalToast && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-medium text-white shadow-lg">
+          {globalToast}
+        </div>
+      )}
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#0c0c0e]/95 px-4 py-3 backdrop-blur">
         <Link href="/" className="flex h-10 w-10 items-center justify-center rounded-full text-[#94A3B8] transition hover:bg-white/10 hover:text-white" aria-label="Back">
           <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -166,7 +182,14 @@ function PlayPageContent() {
           ))}
         </div>
         {tab === "games" && <GamesTab user={user} />}
-        {tab === "coins" && <CoinsTab user={user} onRefreshUser={refreshUser} initialSubTab={searchParams.get("tab") === "history" ? "history" : undefined} />}
+        {tab === "coins" && (
+          <CoinsTab
+            user={user}
+            onRefreshUser={refreshUser}
+            onShowToast={(msg) => { setGlobalToast(msg); setTimeout(() => setGlobalToast(null), 3000); }}
+            initialSubTab={searchParams.get("tab") === "history" ? "history" : undefined}
+          />
+        )}
         {tab === "profile" && <ProfileTab user={user} onLogout={onLogout} />}
       </main>
     </>
@@ -583,7 +606,7 @@ function MatchCard({ match, user }: { match: Match; user: User }) {
   );
 }
 
-function CoinsTab({ user, onRefreshUser, initialSubTab }: { user: User; onRefreshUser?: () => void; initialSubTab?: "deposit" | "withdraw" | "history" }) {
+function CoinsTab({ user, onRefreshUser, onShowToast, initialSubTab }: { user: User; onRefreshUser?: () => void; onShowToast?: (msg: string) => void; initialSubTab?: "deposit" | "withdraw" | "history" }) {
   const router = useRouter();
   const [subTab, setSubTab] = useState<"deposit" | "withdraw" | "history">(initialSubTab ?? "deposit");
 
@@ -597,7 +620,6 @@ function CoinsTab({ user, onRefreshUser, initialSubTab }: { user: User; onRefres
   const [upiId, setUpiId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -638,8 +660,12 @@ function CoinsTab({ user, onRefreshUser, initialSubTab }: { user: User; onRefres
         method: "POST",
         body: JSON.stringify({ amount: amt, upiId: upiId.trim() }),
       });
-      router.push("/play?tab=history");
-      return;
+      setAmount("");
+      setUpiId("");
+      onShowToast?.("Withdrawal request submitted successfully");
+      onRefreshUser?.();
+      api<Transaction[]>(`/api/users/${user.id}/transactions`).then((r) => setTransactions(r ?? [])).catch(() => {});
+      setSubTab("history");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -708,7 +734,6 @@ function CoinsTab({ user, onRefreshUser, initialSubTab }: { user: User; onRefres
               className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-[#64748B]"
             />
             {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
-            {success && <p className="mt-2 text-sm text-emerald-400">Request submitted! Wait for admin approval.</p>}
             <button
               onClick={handleWithdraw}
               disabled={loading}
@@ -756,12 +781,15 @@ function CoinsTab({ user, onRefreshUser, initialSubTab }: { user: User; onRefres
                                 ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30"
                                 : tx.status === "failed"
                                   ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/30"
-                                  : ""
+                                  : tx.status === "refunded"
+                                    ? "bg-purple-500/20 text-purple-400 ring-1 ring-purple-500/30"
+                                    : ""
                           }`}
                         >
                           {tx.status === "pending" && "Pending"}
                           {tx.status === "successful" && "Successful"}
                           {tx.status === "failed" && "Rejected"}
+                          {tx.status === "refunded" && "Refunded"}
                         </span>
                       )}
                       <span className="text-xs text-[#64748B]">{formatTxDate(tx.createdAt)}</span>

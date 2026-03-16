@@ -67,7 +67,9 @@ function DepositPaymentPageContent() {
         method: "POST",
         body: JSON.stringify({ amount: amountNum, utr: utr.trim() }),
       });
-      router.push("/play?tab=history");
+      setUtr("");
+      setError(null);
+      router.push("/play?tab=history&toast=deposit_success");
       return;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");

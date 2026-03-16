@@ -361,12 +361,14 @@ export const adminStore = {
     return u;
   },
   addDepositRequest: (userId: string, amount: number, utr: string) => {
+    const trimmed = utr.trim();
+    if (depositRequests.some((r) => r.utr === trimmed)) return null;
     const id = nextDrId();
     const req: DepositRequest = {
       id,
       userId,
       amount,
-      utr,
+      utr: trimmed,
       status: "pending",
       createdAt: new Date().toISOString(),
     };
@@ -441,6 +443,7 @@ export const adminStore = {
   addWithdrawalRequest: (userId: string, amount: number, upiId: string) => {
     const u = users.find((x) => x.id === userId);
     if (!u || u.coins < amount) return null;
+    u.coins -= amount;
     const id = nextWrId();
     const req: WithdrawalRequest = {
       id,
@@ -464,14 +467,11 @@ export const adminStore = {
   acceptWithdrawalRequest: (id: string) => {
     const req = withdrawalRequests.find((r) => r.id === id);
     if (!req || req.status !== "pending") return null;
-    const u = users.find((x) => x.id === req.userId);
-    if (!u || u.coins < req.amount) return null;
     req.status = "accepted";
-    u.coins -= req.amount;
     coinTransactions.push({
       id: nextTxId(),
       userId: req.userId,
-      amount: req.amount,
+      amount: -req.amount,
       type: "withdraw",
       description: "Withdraw",
       referenceId: req.upiId,
@@ -484,12 +484,14 @@ export const adminStore = {
     if (!req || req.status !== "pending") return null;
     req.status = "rejected";
     req.rejectNote = note;
+    const u = users.find((x) => x.id === req.userId);
+    if (u) u.coins += req.amount;
     coinTransactions.push({
       id: nextTxId(),
       userId: req.userId,
       amount: req.amount,
-      type: "withdraw_failed",
-      description: note || "Withdrawal rejected",
+      type: "refund",
+      description: "Withdrawal rejected - refunded",
       referenceId: req.upiId,
       createdAt: new Date().toISOString(),
     });

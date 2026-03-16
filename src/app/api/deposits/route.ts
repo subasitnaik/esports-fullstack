@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     if (user.isBlocked) return NextResponse.json({ error: "Account is blocked" }, { status: 403 });
 
     const req = await store.addDepositRequest(userId, num, utr.trim());
-    if (!req) return NextResponse.json({ error: "Failed to create deposit request" }, { status: 400 });
+    if (!req) return NextResponse.json({ error: "This UTR has already been used" }, { status: 400 });
     return NextResponse.json(req);
   } catch {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
