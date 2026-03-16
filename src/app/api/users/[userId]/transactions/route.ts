@@ -26,10 +26,10 @@ export async function GET(_request: Request) {
       note = "Withdraw";
     } else if (t.type === "refund" && (t.description?.includes("Withdrawal") || t.description?.includes("refunded"))) {
       status = "refunded";
-      note = "Withdrawal refunded";
+      note = t.description ?? "Withdrawal refunded";
     } else if (t.type === "withdraw_failed") {
       status = "refunded";
-      note = "Withdrawal refunded";
+      note = t.description ?? "Withdrawal refunded";
     } else if (t.type === "deposit_failed") {
       status = "failed";
       note = t.description ?? "Deposit rejected";

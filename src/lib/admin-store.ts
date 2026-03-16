@@ -491,7 +491,7 @@ export const adminStore = {
       userId: req.userId,
       amount: req.amount,
       type: "refund",
-      description: "Withdrawal rejected - refunded",
+      description: note?.trim() ? `Withdrawal rejected: ${note.trim()}` : "Withdrawal rejected - refunded",
       referenceId: req.upiId,
       createdAt: new Date().toISOString(),
     });

@@ -452,7 +452,7 @@ export const db = {
       user_id: req.user_id,
       amount: req.amount,
       type: "refund",
-      description: "Withdrawal rejected - refunded",
+      description: note?.trim() ? `Withdrawal rejected: ${note.trim()}` : "Withdrawal rejected - refunded",
       reference_text: req.upi_id,
     });
     return db.getWithdrawalRequest(id);
