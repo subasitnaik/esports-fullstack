@@ -66,30 +66,30 @@ export function HeroSection() {
             </span>
           </h1>
           <div className="mt-4 flex items-center justify-center gap-6 sm:gap-8 font-ultimatum">
-            <div>
+            <div className="text-center">
               <div
-                className="text-xl text-white sm:text-2xl"
+                className="text-xl font-bold text-accent sm:text-2xl"
                 style={{ textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}
               >
                 10,000+
               </div>
               <div
-                className="text-sm text-white/90"
+                className="mt-1 text-sm font-medium text-white/80"
                 style={{ textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}
               >
                 Players
               </div>
             </div>
             <div className="h-10 w-px shrink-0 bg-white/50" aria-hidden />
-            <div>
+            <div className="text-center">
               <div
-                className="text-xl text-white sm:text-2xl"
+                className="text-xl font-bold text-accent sm:text-2xl"
                 style={{ textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}
               >
                 1,000+
               </div>
               <div
-                className="text-sm text-white/90"
+                className="mt-1 text-sm font-medium text-white/80"
                 style={{ textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}
               >
                 Matches Hosted
