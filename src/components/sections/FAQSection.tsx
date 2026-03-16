@@ -7,7 +7,7 @@ const FAQ_ITEMS = [
   {
     question: "How do I join a tournament?",
     answer: [
-      "Download the app from this website. Open the Tournaments section, select an available tournament, and tap Join.",
+      "Click on the Play button in the home page and then Open the Tournaments section, select an available tournament, and tap Join.",
       "Ensure you meet the entry requirements before registering.",
     ],
   },
@@ -35,7 +35,7 @@ const FAQ_ITEMS = [
   {
     question: "What if a hacker killed me in the match?",
     answer: [
-      "Report the player in the app with supporting evidence (e.g., screenshots or video clips).",
+      "Contact customer support and report the player in the app with supporting evidence (e.g., screenshots or video clips).",
       "We will investigate and take appropriate action after verification. If your report is valid, your entry fee will be refunded.",
     ],
   },
