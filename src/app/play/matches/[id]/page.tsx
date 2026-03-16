@@ -27,6 +27,7 @@ type Participant = {
 };
 
 const USER_KEY = "esports_play_user";
+const JOINED_KEY_PREFIX = "esports_joined_";
 
 function getStoredUser(): User | null {
   if (typeof window === "undefined") return null;
@@ -36,6 +37,24 @@ function getStoredUser(): User | null {
   } catch {
     return null;
   }
+}
+
+function getStoredJoined(matchId: string, userId: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(`${JOINED_KEY_PREFIX}${matchId}_${userId}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setStoredJoined(matchId: string, userId: string, joined: boolean) {
+  if (typeof window === "undefined") return;
+  try {
+    const key = `${JOINED_KEY_PREFIX}${matchId}_${userId}`;
+    if (joined) localStorage.setItem(key, "1");
+    else localStorage.removeItem(key);
+  } catch {}
 }
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
@@ -125,8 +144,12 @@ function MatchDetailContent() {
   }, [id]);
 
   useEffect(() => {
-    setHasJoinedOverride(false);
-  }, [user?.id]);
+    if (user?.id && id) {
+      setHasJoinedOverride(getStoredJoined(id, user.id));
+    } else {
+      setHasJoinedOverride(false);
+    }
+  }, [user?.id, id]);
 
   const hasJoined = (user && participants.some((p) => p.userId === user.id)) || hasJoinedOverride;
 
@@ -154,6 +177,8 @@ function MatchDetailContent() {
       });
       setInGameName("");
       setInGameUid("");
+      setHasJoinedOverride(true);
+      if (user?.id && id) setStoredJoined(id, user.id, true);
       refreshUser();
       await fetchParticipants();
     } catch (e) {
@@ -162,6 +187,7 @@ function MatchDetailContent() {
         setInGameName("");
         setInGameUid("");
         setHasJoinedOverride(true);
+        if (user?.id && id) setStoredJoined(id, user.id, true);
         await fetchParticipants();
       } else {
         setJoinError(msg);
