@@ -410,13 +410,17 @@ function MatchDetailContent() {
                   className="flex items-center justify-between rounded-xl bg-[#0c0c0e]/50 px-4 py-3"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-[#64748B]">#{idx + 1}</span>
+                    {match.status !== "upcoming" && (
+                      <span className="text-sm font-medium text-[#64748B]">
+                        #{typeof p.rank === "number" ? p.rank : idx + 1}
+                      </span>
+                    )}
                     <div>
                       <p className="font-medium text-white">{p.teamMembers[0]?.inGameName ?? "—"}</p>
                       <p className="text-xs text-[#94A3B8]">UID: {p.teamMembers[0]?.inGameUid ?? "—"}</p>
                     </div>
                   </div>
-                  {p.teamMembers[0]?.kills != null && (
+                  {match.status !== "upcoming" && p.teamMembers[0]?.kills != null && (
                     <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400">
                       {p.teamMembers[0].kills} kills
                     </span>
