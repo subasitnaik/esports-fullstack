@@ -1291,7 +1291,6 @@ function MatchDetailView({
         ) : (
           <ul className="space-y-3">
             {participants.map((p, i) => {
-              const position = i + 1;
               const killsArr = getKills(p);
               const totalKills = killsArr.reduce((sum, k) => sum + k, 0);
               const rankVal = localRank[p.id] ?? "";
@@ -1299,13 +1298,19 @@ function MatchDetailView({
               const killsChanged = JSON.stringify(killsArr) !== JSON.stringify(serverKills);
               const rankChanged = typeof rankVal === "number" && rankVal >= 1 && rankVal !== p.rank;
               const hasChanges = killsChanged || rankChanged;
+              const hasBeenUpdated =
+                (typeof p.rank === "number" && p.rank >= 1) ||
+                (p.teamMembers ?? []).some((t) => (t.kills ?? 0) > 0);
+              const position = typeof p.rank === "number" && p.rank >= 1 ? p.rank : i + 1;
               const coins = calcCoinsForPosition(position, totalKills, match.prizePool);
               return (
                 <li
                   key={p.id}
                   className="flex flex-col gap-3 rounded-lg bg-slate-700/30 p-4 transition sm:flex-row sm:flex-wrap sm:items-center sm:gap-3"
                 >
-                  <span className="shrink-0 text-sm font-bold text-slate-400">#{position}</span>
+                  {hasBeenUpdated && (
+                    <span className="shrink-0 text-sm font-bold text-slate-400">#{position}</span>
+                  )}
                   <div className="min-w-0 flex-1 space-y-2">
                     {(p.teamMembers ?? []).map((t, ti) => (
                       <div key={ti} className="flex flex-wrap items-center gap-2">
@@ -1366,9 +1371,11 @@ function MatchDetailView({
                       )}
                     </>
                   )}
-                  <span className="shrink-0 self-start rounded-lg bg-amber-500/20 px-3 py-1 font-medium text-amber-300 sm:self-center">
-                    {coins} coins
-                  </span>
+                  {hasBeenUpdated && (
+                    <span className="shrink-0 self-start rounded-lg bg-amber-500/20 px-3 py-1 font-medium text-amber-300 sm:self-center">
+                      {coins} coins
+                    </span>
+                  )}
                 </li>
               );
             })}
