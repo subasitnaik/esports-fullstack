@@ -778,7 +778,7 @@ function MatchesSection({
 
   const upcoming = matches.filter((m) => m.status === "upcoming");
   const ongoing = matches.filter((m) => m.status === "ongoing");
-  const finished = matches.filter((m) => m.status === "ended" || m.status === "cancelled");
+  const finished = matches.filter((m) => m.status === "ended" || m.status === "completed" || m.status === "cancelled");
   const tabMatches = matchTab === "upcoming" ? upcoming : matchTab === "ongoing" ? ongoing : finished;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1057,7 +1057,7 @@ function MatchesSection({
                       ? "bg-emerald-500/20 text-emerald-300"
                       : m.status === "cancelled"
                         ? "bg-rose-500/20 text-rose-300"
-                        : m.status === "ended"
+                        : m.status === "ended" || m.status === "completed"
                           ? "bg-slate-600/30 text-slate-400"
                           : "bg-amber-500/20 text-amber-300"
                   }`}
@@ -1100,6 +1100,7 @@ function MatchDetailView({
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const [updatingParticipant, setUpdatingParticipant] = useState<string | null>(null);
   const [localKills, setLocalKills] = useState<Record<string, number[]>>({});
   const [localRank, setLocalRank] = useState<Record<string, number | "">>({});
@@ -1192,6 +1193,35 @@ function MatchDetailView({
     }
   };
 
+  const handleFinish = async () => {
+    if (!match) return;
+    const allUpdated = (match.participants ?? []).every(
+      (p) =>
+        (typeof p.rank === "number" && p.rank >= 1) ||
+        (p.teamMembers ?? []).some((t) => (t.kills ?? 0) > 0)
+    );
+    if (!allUpdated && (match.participants ?? []).length > 0) {
+      alert("Update rank and kills for all participants before finishing the match.");
+      return;
+    }
+    if (!confirm("Finish this match? Coins will be transferred to winners. This cannot be undone.")) return;
+    setFinishing(true);
+    try {
+      const res = await fetch(`/api/admin/matches/${matchId}/finish`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to finish match");
+      }
+      const data = await res.json();
+      setMatch(data);
+      onSuccess({ silent: true });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to finish match");
+    } finally {
+      setFinishing(false);
+    }
+  };
+
   if (loading || !match) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -1250,7 +1280,7 @@ function MatchDetailView({
           <span className={`rounded-lg px-3 py-1 text-xs font-medium ${
             match.status === "ongoing" ? "bg-emerald-500/20 text-emerald-300" :
             match.status === "cancelled" ? "bg-rose-500/20 text-rose-300" :
-            match.status === "ended" ? "bg-slate-600/30 text-slate-400" :
+            match.status === "ended" || match.status === "completed" ? "bg-slate-600/30 text-slate-400" :
             "bg-amber-500/20 text-amber-300"
           }`}>
             {match.status}
@@ -1382,6 +1412,23 @@ function MatchDetailView({
           </ul>
         )}
       </div>
+
+      {isOngoing && (
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6">
+          <h3 className="mb-4 text-sm font-medium text-emerald-200">Finish Match</h3>
+          <p className="mb-4 text-xs text-slate-400">
+            After updating rank and kills for all participants, click Finish to complete the match. Coins will be transferred to winners.
+          </p>
+          <button
+            type="button"
+            onClick={handleFinish}
+            disabled={finishing}
+            className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {finishing ? "Finishing..." : "Finish Match"}
+          </button>
+        </div>
+      )}
 
       {isUpcoming && (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-6">

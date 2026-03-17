@@ -245,6 +245,22 @@ export const db = {
     return db.getUser(userId);
   },
 
+  async addMatchWinnings(userId: string, amount: number, matchId: string): Promise<boolean> {
+    const supabase = getSupabase();
+    if (!supabase) return false;
+    const { data: user } = await supabase.from("app_users").select("*").eq("id", userId).single();
+    if (!user) return false;
+    await supabase.from("app_users").update({ coins: user.coins + amount }).eq("id", userId);
+    await supabase.from("app_coin_transactions").insert({
+      user_id: userId,
+      amount,
+      type: "match_winning",
+      reference_id: matchId,
+      description: `Winning with match ${matchId}`,
+    });
+    return true;
+  },
+
   async blockUser(userId: string): Promise<boolean> {
     const supabase = getSupabase();
     if (!supabase) return false;
@@ -824,6 +840,42 @@ export const db = {
       return error ? null : { id: participantId };
     }
     return null;
+  },
+
+  async finishMatch(id: string): Promise<DbMatch | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const match = await db.getMatch(id);
+    if (!match || match.status !== "ongoing") return null;
+    const participants = match.participants ?? [];
+    const prizePool = match.prizePool ?? { coinsPerKill: 0, totalPrizePool: 0, rankRewards: [] };
+    const rewards = prizePool.rankRewards ?? [];
+    const cpk = prizePool.coinsPerKill ?? 0;
+    const withRank = participants
+      .filter((p) => typeof p.rank === "number" && p.rank >= 1)
+      .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
+    for (const p of withRank) {
+      const totalKills = (p.teamMembers ?? []).reduce((s, t) => s + (t.kills ?? 0), 0);
+      let coins = totalKills * cpk;
+      for (const r of rewards) {
+        if (p.rank! >= r.fromRank && p.rank! <= r.toRank) {
+          coins += r.coins;
+          break;
+        }
+      }
+      if (coins > 0 && p.userId) {
+        await db.addMatchWinnings(p.userId, coins, id);
+      }
+    }
+    const { data, error } = await supabase
+      .from("matches")
+      .update({ status: "completed", updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("status", "ongoing")
+      .select()
+      .single();
+    if (error || !data) return null;
+    return toMatch(data);
   },
 
   async loginAdmin(adminname: string, password: string): Promise<DbAdmin | null> {

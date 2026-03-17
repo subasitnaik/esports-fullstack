@@ -43,6 +43,7 @@ export function getStore() {
       updateMatchRoomInfo: (id: string, roomCode: string, roomPassword: string) => db.updateMatchRoomInfo(id, roomCode, roomPassword),
       startMatch: (id: string, roomCode?: string, roomPassword?: string) => db.startMatch(id, roomCode, roomPassword),
       cancelMatch: (id: string) => db.cancelMatch(id),
+      finishMatch: (id: string) => db.finishMatch(id),
       deleteMatch: (id: string) => db.deleteMatch(id),
       renameMatch: (id: string, title: string) => db.renameMatch(id, title),
       updateParticipantKills: (matchId: string, participantId: string, kills: number[]) =>
@@ -122,6 +123,7 @@ export function getStore() {
     startMatch: (id: string, roomCode?: string, roomPassword?: string) =>
       Promise.resolve(adminStore.startMatch(id, roomCode, roomPassword)).then((m) => (m ? { ...m, participants: adminStore.getParticipantsForMatch(id) } : null)),
     cancelMatch: (id: string) => Promise.resolve(adminStore.cancelMatch(id)).then((m) => (m ? { ...m, participants: adminStore.getParticipantsForMatch(id) } : null)),
+    finishMatch: (id: string) => Promise.resolve(adminStore.finishMatch(id)).then((m) => (m ? { ...m, participants: adminStore.getParticipantsForMatch(id) } : null)),
     deleteMatch: (id: string) => Promise.resolve(adminStore.deleteMatch(id)),
     renameMatch: (id: string, title: string) => Promise.resolve(adminStore.renameMatch(id, title)),
     updateParticipantKills: (matchId: string, participantId: string, kills: number[]) =>

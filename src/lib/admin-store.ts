@@ -24,7 +24,7 @@ export type Match = {
   entryFee: number;
   roomCode: string | null;
   roomPassword: string | null;
-  status: "upcoming" | "ongoing" | "ended" | "cancelled";
+  status: "upcoming" | "ongoing" | "ended" | "completed" | "cancelled";
   maxParticipants: number;
   scheduledAt: string;
   registrationLocked: boolean;
@@ -47,7 +47,7 @@ export type CoinTransaction = {
   id: string;
   userId: string;
   amount: number;
-  type: "admin_add" | "match_entry" | "refund" | "deposit" | "deposit_failed" | "withdraw" | "withdraw_failed" | "signup_bonus";
+  type: "admin_add" | "match_entry" | "refund" | "deposit" | "deposit_failed" | "withdraw" | "withdraw_failed" | "signup_bonus" | "match_winning";
   referenceId?: string;
   description?: string;
   createdAt: string;
@@ -292,6 +292,44 @@ export const adminStore = {
         });
       }
     }
+    return m;
+  },
+  finishMatch: (matchId: string) => {
+    const m = matches.find((x) => x.id === matchId);
+    if (!m || m.status !== "ongoing") return null;
+    const participants = matchParticipants
+      .filter((p) => p.matchId === matchId);
+    const withRank = participants
+      .filter((p) => typeof p.rank === "number" && p.rank >= 1)
+      .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
+    const rewards = m.prizePool?.rankRewards ?? [];
+    const cpk = m.prizePool?.coinsPerKill ?? 0;
+    for (const p of withRank) {
+      const totalKills = (p.teamMembers ?? []).reduce((s, t) => s + (t.kills ?? 0), 0);
+      let coins = totalKills * cpk;
+      for (const r of rewards) {
+        if (p.rank! >= r.fromRank && p.rank! <= r.toRank) {
+          coins += r.coins;
+          break;
+        }
+      }
+      if (coins > 0) {
+        const u = users.find((x) => x.id === p.userId);
+        if (u) {
+          u.coins += coins;
+          coinTransactions.push({
+            id: nextTxId(),
+            userId: p.userId,
+            amount: coins,
+            type: "match_winning",
+            referenceId: matchId,
+            description: `Winning with match ${matchId}`,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+    }
+    m.status = "completed";
     return m;
   },
   deleteMatch: (id: string) => {
