@@ -61,6 +61,7 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...options,
     credentials: "include",
+    cache: "no-store",
     headers: { "Content-Type": "application/json", ...options?.headers },
   });
   const data = await res.json().catch(() => ({}));
@@ -138,7 +139,7 @@ function MatchDetailContent() {
 
   useEffect(() => {
     if (!id) return;
-    api<Participant[]>(`/api/matches/${id}/participants`)
+    api<Participant[]>(`/api/matches/${id}/participants?t=${Date.now()}`)
       .then(setParticipants)
       .catch(() => setParticipants([]));
   }, [id]);
@@ -155,7 +156,7 @@ function MatchDetailContent() {
 
   const fetchParticipants = useCallback(() => {
     if (!id) return;
-    api<Participant[]>(`/api/matches/${id}/participants`)
+    api<Participant[]>(`/api/matches/${id}/participants?t=${Date.now()}`)
       .then(setParticipants)
       .catch(() => setParticipants([]));
   }, [id]);
