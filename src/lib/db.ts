@@ -639,7 +639,7 @@ export const db = {
       .order("joined_at");
     const { data: appParts } = await supabase
       .from("app_match_participants")
-      .select("id, match_id, app_user_id, in_game_name, in_game_uid, joined_at")
+      .select("id, match_id, app_user_id, in_game_name, in_game_uid, kills, squad_rank, joined_at")
       .eq("match_id", id)
       .order("joined_at");
     const participants = [
@@ -655,9 +655,9 @@ export const db = {
         id: p.id,
         matchId: p.match_id,
         userId: p.app_user_id,
-        teamMembers: [{ inGameName: p.in_game_name, inGameUid: p.in_game_uid, kills: 0 }],
+        teamMembers: [{ inGameName: p.in_game_name, inGameUid: p.in_game_uid, kills: (p as { kills?: number }).kills ?? 0 }],
         joinedAt: p.joined_at,
-        rank: undefined as number | undefined,
+        rank: (p as { squad_rank?: number }).squad_rank ?? undefined,
       })),
     ];
     return { ...toMatch(matchRow), participants };
@@ -783,6 +783,47 @@ export const db = {
     const { data, error } = await supabase.from("matches").update({ title, updated_at: new Date().toISOString() }).eq("id", id).select().single();
     if (error || !data) return null;
     return toMatch(data);
+  },
+
+  async updateParticipantKills(
+    matchId: string,
+    participantId: string,
+    kills: number[]
+  ): Promise<{ id: string } | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const k0 = kills[0] ?? 0;
+    const { data: mp } = await supabase.from("match_participants").select("id").eq("id", participantId).eq("match_id", matchId).single();
+    if (mp) {
+      const { error } = await supabase.from("match_participants").update({ kills: k0 }).eq("id", participantId).eq("match_id", matchId);
+      return error ? null : { id: participantId };
+    }
+    const { data: amp } = await supabase.from("app_match_participants").select("id").eq("id", participantId).eq("match_id", matchId).single();
+    if (amp) {
+      const { error } = await supabase.from("app_match_participants").update({ kills: k0 }).eq("id", participantId).eq("match_id", matchId);
+      return error ? null : { id: participantId };
+    }
+    return null;
+  },
+
+  async updateParticipantRank(
+    matchId: string,
+    participantId: string,
+    rank: number
+  ): Promise<{ id: string } | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const { data: mp } = await supabase.from("match_participants").select("id").eq("id", participantId).eq("match_id", matchId).single();
+    if (mp) {
+      const { error } = await supabase.from("match_participants").update({ squad_rank: rank }).eq("id", participantId).eq("match_id", matchId);
+      return error ? null : { id: participantId };
+    }
+    const { data: amp } = await supabase.from("app_match_participants").select("id").eq("id", participantId).eq("match_id", matchId).single();
+    if (amp) {
+      const { error } = await supabase.from("app_match_participants").update({ squad_rank: rank }).eq("id", participantId).eq("match_id", matchId);
+      return error ? null : { id: participantId };
+    }
+    return null;
   },
 
   async loginAdmin(adminname: string, password: string): Promise<DbAdmin | null> {

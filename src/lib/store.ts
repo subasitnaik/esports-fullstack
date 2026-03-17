@@ -45,6 +45,10 @@ export function getStore() {
       cancelMatch: (id: string) => db.cancelMatch(id),
       deleteMatch: (id: string) => db.deleteMatch(id),
       renameMatch: (id: string, title: string) => db.renameMatch(id, title),
+      updateParticipantKills: (matchId: string, participantId: string, kills: number[]) =>
+        db.updateParticipantKills(matchId, participantId, kills),
+      updateParticipantRank: (matchId: string, participantId: string, rank: number) =>
+        db.updateParticipantRank(matchId, participantId, rank),
       users: () => db.users(),
       addUser: (email: string, displayName: string, password: string) => db.addUser(email, displayName, password),
       signInUser: (email: string, password: string) => db.signInUser(email, password),
@@ -120,6 +124,10 @@ export function getStore() {
     cancelMatch: (id: string) => Promise.resolve(adminStore.cancelMatch(id)).then((m) => (m ? { ...m, participants: adminStore.getParticipantsForMatch(id) } : null)),
     deleteMatch: (id: string) => Promise.resolve(adminStore.deleteMatch(id)),
     renameMatch: (id: string, title: string) => Promise.resolve(adminStore.renameMatch(id, title)),
+    updateParticipantKills: (matchId: string, participantId: string, kills: number[]) =>
+      Promise.resolve(adminStore.updateParticipantKills(matchId, participantId, kills)),
+    updateParticipantRank: (matchId: string, participantId: string, rank: number) =>
+      Promise.resolve(adminStore.updateParticipantRank(matchId, participantId, rank)),
     getAllAdmins: () => Promise.resolve(adminStore.getAllAdmins()),
     createAdmin: (adminname: string, password: string, opts: { usersAccess: boolean; coinsAccess: boolean; gamesAccessType: "all" | "specific"; allowedGameIds: string[] }) =>
       Promise.resolve(adminStore.createAdmin(adminname, password, opts)),
