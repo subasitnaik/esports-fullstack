@@ -1342,6 +1342,11 @@ function MatchDetailView({
                     <span className="shrink-0 text-sm font-bold text-slate-400">#{position}</span>
                   )}
                   <div className="min-w-0 flex-1 space-y-2">
+                    {p.userId && (
+                      <div className="break-all text-xs font-mono text-slate-500">
+                        User ID: {p.userId}
+                      </div>
+                    )}
                     {(p.teamMembers ?? []).map((t, ti) => (
                       <div key={ti} className="flex flex-wrap items-center gap-2">
                         <div>
