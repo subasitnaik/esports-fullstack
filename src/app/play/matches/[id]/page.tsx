@@ -97,6 +97,24 @@ function MatchTypeTag({ type }: { type: string }) {
   );
 }
 
+function computeCoinsWon(
+  p: Participant,
+  cpk: number,
+  rankRewards: { fromRank: number; toRank: number; coins: number }[]
+): number {
+  const totalKills = (p.teamMembers ?? []).reduce((s, t) => s + (t.kills ?? 0), 0);
+  let coins = totalKills * cpk;
+  if (typeof p.rank === "number" && p.rank >= 1 && rankRewards?.length) {
+    for (const r of rankRewards) {
+      if (p.rank >= r.fromRank && p.rank <= r.toRank) {
+        coins += r.coins;
+        break;
+      }
+    }
+  }
+  return coins;
+}
+
 function MatchDetailContent() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -291,7 +309,9 @@ function MatchDetailContent() {
 
   const cpk = match.prizePool?.coinsPerKill ?? 0;
   const prizePool = match.prizePool?.totalPrizePool ?? 0;
+  const rankRewards = match.prizePool?.rankRewards ?? [];
   const type = match.matchType || "solo";
+  const isCompleted = match.status === "completed" || match.status === "ended";
 
   return (
     <>
@@ -412,10 +432,15 @@ function MatchDetailContent() {
         )}
 
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">
-              Participants ({participants.length}/{match.maxParticipants ?? 100})
-            </h2>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-white">
+                {isCompleted ? "Final Standings" : "Participants"} ({participants.length}/{match.maxParticipants ?? 100})
+              </h2>
+              {isCompleted && (
+                <p className="mt-0.5 text-xs text-[#94A3B8]">Rank, kills, and coins won per player</p>
+              )}
+            </div>
             <button
               onClick={fetchParticipants}
               className="rounded-lg px-3 py-1.5 text-sm text-[#94A3B8] hover:bg-white/5 hover:text-white"
@@ -427,29 +452,40 @@ function MatchDetailContent() {
             <p className="mt-4 text-sm text-[#94A3B8]">No participants yet</p>
           ) : (
             <div className="mt-4 space-y-2">
-              {participants.map((p, idx) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between rounded-xl bg-[#0c0c0e]/50 px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    {match.status !== "upcoming" && (
-                      <span className="text-sm font-medium text-[#64748B]">
-                        #{typeof p.rank === "number" ? p.rank : idx + 1}
-                      </span>
-                    )}
-                    <div>
-                      <p className="font-medium text-white">{p.teamMembers[0]?.inGameName ?? "—"}</p>
-                      <p className="text-xs text-[#94A3B8]">UID: {p.teamMembers[0]?.inGameUid ?? "—"}</p>
+              {participants.map((p, idx) => {
+                const totalKills = (p.teamMembers ?? []).reduce((s, t) => s + (t.kills ?? 0), 0);
+                const coinsWon = isCompleted ? computeCoinsWon(p, cpk, rankRewards) : 0;
+                return (
+                  <div
+                    key={p.id}
+                    className="flex flex-col gap-2 rounded-xl bg-[#0c0c0e]/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      {match.status !== "upcoming" && (
+                        <span className="shrink-0 text-sm font-medium text-[#64748B]">
+                          #{typeof p.rank === "number" ? p.rank : idx + 1}
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-white">{p.teamMembers[0]?.inGameName ?? "—"}</p>
+                        <p className="truncate text-xs text-[#94A3B8]">UID: {p.teamMembers[0]?.inGameUid ?? "—"}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
+                      {match.status !== "upcoming" && totalKills > 0 && (
+                        <span className="rounded-full bg-amber-500/20 px-2.5 py-1 text-xs font-semibold text-amber-400">
+                          {totalKills} kill{totalKills !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {isCompleted && coinsWon > 0 && (
+                        <span className="rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-semibold text-emerald-400">
+                          +{coinsWon} coins
+                        </span>
+                      )}
                     </div>
                   </div>
-                  {match.status !== "upcoming" && p.teamMembers[0]?.kills != null && (
-                    <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400">
-                      {p.teamMembers[0].kills} kills
-                    </span>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
