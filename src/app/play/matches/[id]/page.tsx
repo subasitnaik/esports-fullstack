@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { brand } from "@config/brand";
+import { LoadingSpinner } from "@/components/ui";
 
 type User = { id: string; email: string; displayName: string; coins: number; isBlocked?: boolean };
 type MatchDetail = {
@@ -105,6 +106,7 @@ function MatchDetailContent() {
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMatch, setLoadingMatch] = useState(true);
   const [match, setMatch] = useState<MatchDetail | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [inGameName, setInGameName] = useState("");
@@ -131,10 +133,15 @@ function MatchDetailContent() {
   }, [refreshUser]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setLoadingMatch(false);
+      return;
+    }
+    setLoadingMatch(true);
     api<MatchDetail>(`/api/matches/${id}`)
       .then(setMatch)
-      .catch(() => setMatch(null));
+      .catch(() => setMatch(null))
+      .finally(() => setLoadingMatch(false));
   }, [id]);
 
   useEffect(() => {
@@ -208,11 +215,7 @@ function MatchDetailContent() {
   const backHref = modeId ? `/play?tab=games&modeId=${modeId}` : "/play";
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#f97316] border-t-transparent" />
-      </div>
-    );
+    return <LoadingSpinner fullScreen label="Loading..." />;
   }
 
   if (!user) {
@@ -240,6 +243,26 @@ function MatchDetailContent() {
             Sign In
           </Link>
         </div>
+      </>
+    );
+  }
+
+  if (loadingMatch) {
+    return (
+      <>
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#0c0c0e]/95 px-4 py-3 backdrop-blur">
+          <Link
+            href={backHref}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-[#94A3B8] transition hover:bg-white/10 hover:text-white"
+          >
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <span className="font-ultimatum font-semibold text-white">{brand.appName}</span>
+          <div className="w-10" />
+        </header>
+        <LoadingSpinner fullScreen label="Loading match..." />
       </>
     );
   }

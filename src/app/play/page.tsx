@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { brand } from "@config/brand";
+import { LoadingSpinner } from "@/components/ui";
 
 type User = { id: string; email: string; displayName: string; coins: number; isBlocked?: boolean };
 type Game = { id: string; name: string; imageUrl: string | null };
@@ -140,11 +141,7 @@ function PlayPageContent() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#f97316] border-t-transparent" />
-      </div>
-    );
+    return <LoadingSpinner fullScreen label="Loading..." />;
   }
 
   if (!user) {
@@ -391,6 +388,8 @@ function GamesTab({ user, searchParams }: { user: User; searchParams: URLSearchP
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [selectedMode, setSelectedMode] = useState<GameMode | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingModes, setLoadingModes] = useState(false);
+  const [loadingMatches, setLoadingMatches] = useState(false);
 
   useEffect(() => {
     api<Game[]>("/api/games")
@@ -419,11 +418,15 @@ function GamesTab({ user, searchParams }: { user: User; searchParams: URLSearchP
       setModes([]);
       setSelectedMode(null);
       setMatches([]);
+      setLoadingModes(false);
+      setLoadingMatches(false);
       return;
     }
+    setLoadingModes(true);
     api<GameMode[]>(`/api/modes?gameId=${selectedGame.id}`)
       .then(setModes)
-      .catch(() => setModes([]));
+      .catch(() => setModes([]))
+      .finally(() => setLoadingModes(false));
     if (!modeIdFromUrl) setSelectedMode(null);
     setMatches([]);
   }, [selectedGame]);
@@ -431,22 +434,32 @@ function GamesTab({ user, searchParams }: { user: User; searchParams: URLSearchP
   useEffect(() => {
     if (!selectedMode) {
       setMatches([]);
+      setLoadingMatches(false);
       return;
     }
+    setLoadingMatches(true);
     api<Match[]>(`/api/matches?modeId=${selectedMode.id}`)
       .then(setMatches)
-      .catch(() => setMatches([]));
+      .catch(() => setMatches([]))
+      .finally(() => setLoadingMatches(false));
   }, [selectedMode]);
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#f97316] border-t-transparent" />
-      </div>
-    );
+    return <LoadingSpinner size="md" compact label="Loading games..." />;
   }
 
   if (selectedMode) {
+    if (loadingMatches) {
+      return (
+        <div className="p-4">
+          <button onClick={() => setSelectedMode(null)} className="mb-4 text-sm text-[#f97316] hover:underline">
+            ← Back to Modes
+          </button>
+          <h2 className="text-lg font-semibold text-white">Matches</h2>
+          <LoadingSpinner size="md" compact label="Loading matches..." />
+        </div>
+      );
+    }
     return (
       <MatchesView
         matches={matches}
@@ -458,6 +471,17 @@ function GamesTab({ user, searchParams }: { user: User; searchParams: URLSearchP
   }
 
   if (selectedGame) {
+    if (loadingModes) {
+      return (
+        <div className="p-4">
+          <button onClick={() => setSelectedGame(null)} className="mb-4 text-sm text-[#f97316] hover:underline">
+            ← Back to Games
+          </button>
+          <h2 className="text-lg font-semibold text-white">Select Mode</h2>
+          <LoadingSpinner size="md" compact label="Loading modes..." />
+        </div>
+      );
+    }
     return (
       <div className="p-4">
         <button
@@ -681,6 +705,7 @@ function CoinsTab({ user, onRefreshUser, onShowToast, initialSubTab }: { user: U
   }, [initialSubTab]);
   const [withdrawalCharge, setWithdrawalCharge] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loadingInitial, setLoadingInitial] = useState(true);
   const [depositAmount, setDepositAmount] = useState("");
   const [amount, setAmount] = useState("");
   const [upiId, setUpiId] = useState("");
@@ -688,13 +713,17 @@ function CoinsTab({ user, onRefreshUser, onShowToast, initialSubTab }: { user: U
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setLoadingInitial(true);
     Promise.all([
       api<{ chargePercent?: number }>("/api/withdrawal-charge").then((r) => r.chargePercent ?? 0),
       api<Transaction[]>(`/api/users/${user.id}/transactions`).then((r) => r ?? []),
-    ]).then(([charge, tx]) => {
-      setWithdrawalCharge(charge);
-      setTransactions(tx);
-    }).catch(() => {});
+    ])
+      .then(([charge, tx]) => {
+        setWithdrawalCharge(charge);
+        setTransactions(tx);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingInitial(false));
   }, [user.id]);
 
   useEffect(() => {
@@ -835,6 +864,9 @@ function CoinsTab({ user, onRefreshUser, onShowToast, initialSubTab }: { user: U
                 </svg>
               </button>
             </div>
+            {loadingInitial ? (
+              <LoadingSpinner size="sm" compact label="Loading history..." />
+            ) : (
             <div className="space-y-3">
               {transactions.map((tx) => (
                 <div
@@ -894,7 +926,7 @@ function CoinsTab({ user, onRefreshUser, onShowToast, initialSubTab }: { user: U
                   </div>
                 </div>
               ))}
-              {transactions.length === 0 && (
+              {transactions.length === 0 && !loadingInitial && (
                 <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.02] py-16 px-6">
                   <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5">
                     <svg className="h-8 w-8 text-[#94A3B8]/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -906,6 +938,7 @@ function CoinsTab({ user, onRefreshUser, onShowToast, initialSubTab }: { user: U
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
       </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { LoadingSpinner } from "@/components/ui";
 
 type Tab = "games" | "coins" | "admins" | "users";
 type Game = { id: string; name: string; imageUrl: string | null };
@@ -183,9 +184,8 @@ export default function AdminPage() {
         )}
 
         {loading ? (
-          <div className="admin-card flex flex-col items-center justify-center gap-4 rounded-2xl p-16">
-            <div className="h-10 w-10 animate-spin rounded-full border-2 border-orange-500/30 border-t-orange-500" />
-            <p className="text-slate-400">Loading dashboard...</p>
+          <div className="admin-card flex flex-col items-center justify-center rounded-2xl p-16">
+            <LoadingSpinner size="lg" label="Loading dashboard..." />
           </div>
         ) : (
           <>
@@ -1225,7 +1225,7 @@ function MatchDetailView({
   if (loading || !match) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-orange-500/30 border-t-orange-500" />
+        <LoadingSpinner size="md" compact label="Loading match..." />
       </div>
     );
   }
